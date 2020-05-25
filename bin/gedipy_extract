@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+
+DESCRIPTION='''
+Extract specific shot numbers from GEDI L1/L2 files.
+'''
+
+import argparse
+import re
+
+import h5py
+import numpy
+
+from gedipy import gedidb
+from gedipy import userfunctions
+
+
+if __name__ == '__main__':
+    # Parse command line arguments
+    argparser = argparse.ArgumentParser(description=DESCRIPTION,
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+    argparser.add_argument('output_file', metavar='FILE', type=str,
+            help='output file for selected shots')
+    argparser.add_argument('-s', '--shot-number-list', metavar='FILE', type=str,
+            help='file containing the shot numbers to extract (one per line)')
+    argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
+            help='file containing datasets to copy (one per line).  If not specified, copy all datasets.')
+    argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
+            help='file containing paths to the L1/L2 files (one per line)')
+    argparser.add_argument('-r', '--reference-h5', metavar='FILE', type=str,
+            help='reference H5 file containing shotnumbers to extract')
+    argparser.add_argument('--wavedata2d', default=False, action="store_true",
+            help='write out the waveform data as a 2d array [%(default)s]')
+    args = argparser.parse_args()
+
+    # Load file database
+    file_database = gedidb.FileDatabase()
+    if args.file_list:
+        file_database.add_file_list(args.file_list)
+    else:
+        print('error: The --file-list option must be specified.')
+        exit(1)
+
+    # Load shot numbers to extract
+    shot_number_database = gedidb.ShotNumberDatabase()
+    if args.shot_number_list is not None:
+        shot_number_database.add_shot_number_file(args.shot_number_list)
+    elif args.reference_h5 is not None:
+        shot_number_database.add_shot_numbers_from_h5(args.reference_h5)
+    else:
+        print('error: the --shot-number-list or reference-h5 option must be specified.')
+        exit(1)
+
+    # Load dataset list
+    dataset_list = []
+    if args.dataset_list:
+        with open(args.dataset_list) as fid_dataset_list:
+            dataset_list = [line.strip() for line in fid_dataset_list.readlines()]
+
+    # Open output file
+    output_fid = h5py.File(args.output_file, 'w')
+
+    # Loop through and extract shot numbers
+    number_of_files = len(shot_number_database.shot_numbers_by_orbit_beam)
+    for i,orbit in enumerate(shot_number_database.shot_numbers_by_orbit_beam):
+        gedi_file = file_database.get_file(orbit)
+        if gedi_file is not None:
+            print('Extracting from {} ({}/{})'.format(gedi_file.filename, i+1, number_of_files), flush=True)
+            gedi_file.open()
+            for beam in shot_number_database.shot_numbers_by_orbit_beam[orbit]:
+                shots = shot_number_database.shot_numbers_by_orbit_beam[orbit][beam]
+                gedi_file.copy_shots(output_fid, beam, shots, args.wavedata2d, dataset_list=dataset_list)
+            gedi_file.close()
+        else:
+            print('No matching h5 file for orbit {} ({}/{})'.format(orbit, i+1, number_of_files), flush=True)
+
+    # Close output file
+    output_fid.close()
+

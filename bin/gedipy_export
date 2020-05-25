@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+
+DESCRIPTION='''
+Export subsets of GEDI L1 and L2 files to CSV or GeoJSON
+'''
+
+import numpy
+import pandas
+import argparse
+
+from gedipy import gedidb
+from gedipy import userfunctions
+
+
+if __name__ == '__main__':
+    # Parse command line arguments
+    argparser = argparse.ArgumentParser(description=DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    argparser.add_argument('output_file', metavar='FILE', type=str,
+        help='Output file for selected shots')
+    argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
+        help='File containing datasets to copy (one per line)')
+    argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
+        help='File containing paths to the L1B/L2A/L2B files (one per line)')
+    argparser.add_argument('-k', '--kml', metavar='FILE', type=str,
+        help='KML file to define extent of subset')
+    argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
+        help='Geographic coordinate bounding box [minx maxy maxx miny]')
+    argparser.add_argument('-o', '--out_format', default='CSV', choices=['CSV','ESRI Shapefile','GeoJSON','GPKG'],
+        type=str, help='Output file format')
+    args = argparser.parse_args()
+
+    # Load the subset geometry
+    if args.bbox:
+        geom_list = [box(args.bbox[0], args.bbox[3], args.bbox[2], args.bbox[1])]
+    elif args.kml:
+        geom_list = userfunctions.get_polygons_from_kml(args.kml)
+    else:
+        print('error: --bbox and --kml not specified.')
+        exit(1)
+
+    # Load file database
+    file_database = gedidb.FileDatabase()
+    if args.file_list:
+        file_database.add_file_list(args.file_list)
+    else:
+        print('error: the --file-list option must be specified.')
+        exit(1)
+
+    # Load dataset list
+    dataset_list = []
+    if args.dataset_list:
+        with open(args.dataset_list) as fid_dataset_list:
+            dataset_list = [line.strip() for line in fid_dataset_list.readlines() if len(line) > 1]
+    else:
+        print('error: --dataset_list not specified.')
+        exit(1)
+    
+    # Loop through each h5 file and beam
+    number_of_files = len(file_database.file_by_orbit)
+    outdata_list = []
+    for i,orbit in enumerate(file_database.file_by_orbit):
+        h5file = file_database.get_file(orbit)
+        if h5file:
+            print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
+            h5file.open()
+            for beam in h5file.beams:
+                outdata = h5file.export_shots(beam, geom_list, dataset_list=dataset_list)
+                outdata_list.append(outdata)
+            h5file.close()
+
+    # Concatenate the results
+    if len(outdata_list) > 0:
+        outdata = pandas.concat(outdata_list, axis=0)
+    else:
+        print('There are no intersecting shots')
+        exit(1)
+
+    # Output the data to file
+    if args.out_format == 'CSV':
+        outdata.to_csv(args.output_file, mode='w', header=True, index=False)
+    else:
+        xname, yname = None, None
+        if xname in outdata.columns and yname in outdata.columns:
+            shot_geom = geopandas.points_from_xy(outdata[xname], outdata[yname])
+        else:
+            print('error: geometry columns needed for {} not specified in --dataset_list.')
+            exit(1)
+        gdf = geopandas.GeoDataFrame(outdata, geometry=shot_geom)      
+        gdf.to_file(args.output_file, driver=args.out_format)
+

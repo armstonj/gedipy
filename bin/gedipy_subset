@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+
+DESCRIPTION='''
+Extract spatial subsets from GEDI L1 and L2 files.
+'''
+
+import argparse
+import re
+
+import h5py
+import numpy
+
+from gedipy import gedidb
+from gedipy import userfunctions
+
+
+if __name__ == '__main__':
+    # Parse command line arguments
+    argparser = argparse.ArgumentParser(description=DESCRIPTION,
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+    argparser.add_argument('output_file', metavar='FILE', type=str,
+            help='output file for selected shots')
+    argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
+            help='file containing datasets to copy (one per line).  If not specified, copy all datasets.')
+    argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
+            help='file containing paths to the L1A/L1B/L2A/L2B files (one per line)')
+    argparser.add_argument('--wavedata2d', default=False, action="store_true",
+            help='write out the waveform data as a 2d array [%(default)s]')
+    argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
+            help='geographic coordinate bounding box [minx maxy maxx miny]')
+    argparser.add_argument('-k', '--kml_file', metavar='FILE', type=str,
+            help='KML file to use for database query')
+    args = argparser.parse_args()
+
+    # Load the subset geometry
+    file_database = gedidb.FileDatabase()
+    if args.kml_file is not None:
+        geomlist = userfunctions.get_polygon_from_kml(args.kml_file)
+    elif args.bbox is not None:
+        geomlist = userfunctions.get_polygon_from_bbox(args.bbox[0], args.bbox[1], args.bbox[2], args.bbox[3])
+    else:
+        print('error: --kml_file or --bbox not specified.')
+        exit(1)
+
+    # Load file database
+    if args.file_list:
+        file_database.add_file_list(args.file_list)        
+    else:
+        print('error: the --file-list option must be specified.')
+        exit(1)
+
+    # Load dataset list
+    dataset_list = []
+    if args.dataset_list:
+        with open(args.dataset_list) as fid_dataset_list:
+            dataset_list = [line.strip() for line in fid_dataset_list.readlines()]
+
+    # Open output file
+    output_fid = h5py.File(args.output_file, 'w')
+
+    # Loop through and extract shot numbers
+    number_of_files = len(file_database.file_by_orbit)
+    for i,orbit in enumerate(file_database.file_by_orbit):
+        h5file = file_database.get_file(orbit)
+        if h5file is not None:
+            print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
+            h5file.open()
+            h5file.copy_attrs(output_fid, '.')
+            for beam in h5file.beams:
+                h5file.copy_shots(output_fid, beam, geomlist, args.wavedata2d, geom=True, dataset_list=dataset_list)
+            h5file.close()
+        else:
+            print('No matching h5 file for orbit {} ({}/{})'.format(orbit, i+1, number_of_files), flush=True)
+    
+    # Close output file 
+    output_fid.close()
+
