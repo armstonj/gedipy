@@ -1,2 +1,3 @@
 # gedipy
-Tools for simplifying processing of GEDI H5 data products
+Tools for simplifying processing of NASA's Global Ecosystem Dynamics Investigation (GEDI) H5 data products
+
