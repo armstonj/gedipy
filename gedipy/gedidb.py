@@ -5,11 +5,15 @@ Classes that are available to the user
 # This file is part of GEDIPy
 # Copyright (C) 2020
 
+import os
 import h5py
 import numpy
 import json
+import urllib.request
 
 from . import h5io
+
+GEDIPY_FINDER_URL = 'https://lpdaacsvc.cr.usgs.gov/services/gedifinder'
 
 
 class ShotNumber:
@@ -58,6 +62,25 @@ class FileDatabase:
                 raise TypeError
         with open(fn, 'w') as f:
             json.dump(self.file_by_orbit, f, sort_keys=True, indent=4, default=__serialize)
+
+    def query_gedi_finder(self, bbox, product='GEDI02_B', version=1, output='json', localroot=None):
+        url_template = '{}?product={}&version={:03d}&bbox=[{:f},{:f},{:f},{:f}]&output={}'
+        url = url_template.format(GEDIPY_FINDER_URL, product, version, 
+                                  bbox[1], bbox[0], bbox[3], bbox[2], output)
+        handle = urllib.request.urlopen(url)
+        json_str = handle.read()
+        h5_files = json.loads(json_str)
+        if not h5_files['error_code']:
+            for fpath in h5_files['data']:i
+                fn = os.path.basename(fpath)
+                if localroot:
+                    fn = os.path.join(localroot, fn)
+                if os.path.exists(fn):
+                    h5file = h5io.GEDIH5File(fn)
+                    if h5file.is_valid():
+                        self.file_by_orbit[h5file.get_orbit_number()] = h5file
+                    else:
+                        print('{} is not a valid GEDI H5 file'.format(fn))
 
 
 class ShotNumberDatabase:
