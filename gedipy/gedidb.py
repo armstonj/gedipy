@@ -1,6 +1,6 @@
 
 """
-Classes that are available to the user
+Classes to provide an interface to GEDI files, orbits and shot numbers
 """
 # This file is part of GEDIPy
 # Copyright (C) 2020
