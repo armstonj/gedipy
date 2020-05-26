@@ -28,7 +28,7 @@ else:
 
 setup(name='gedipy',
       version=gedipy.GEDIPY_VERSION,
-      description='Tools for simplifying processing of NASAs Global Ecosystem Dynamics Investigation (GEDI) H5 data products.',
+      description='Python tools for simplified processing of NASAs Global Ecosystem Dynamics Investigation (GEDI) H5 data products.',
       packages=['gedipy'],
       scripts=scriptList,
       license='LICENSE.txt', 

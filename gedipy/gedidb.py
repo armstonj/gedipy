@@ -71,7 +71,7 @@ class FileDatabase:
         json_str = handle.read()
         h5_files = json.loads(json_str)
         if not h5_files['error_code']:
-            for fpath in h5_files['data']:i
+            for fpath in h5_files['data']:
                 fn = os.path.basename(fpath)
                 if localroot:
                     fn = os.path.join(localroot, fn)
