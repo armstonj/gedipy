@@ -34,6 +34,40 @@ class GEDIGrid:
         self.outproj = pyproj.Proj(init=str(profile['crs']))
         self.gedi_domain = gedi_domain
 
+    def rowcol_to_wgs84(self, rows, cols):
+        """
+        Function to convert EASE 2.0 grid row/cols to WGS84 (EPSG:4326 coordinates)
+        Should probably be replaced with a call to pyproj
+        """
+        e2 = GEDIPY_EASE2_PAR['map_eccentricity']**2.0
+        e4 = GEDIPY_EASE2_PAR['map_eccentricity']**4.0
+        e6 = GEDIPY_EASE2_PAR['map_eccentricity']**6.0
+        sin_phi1 = numpy.sin( numpy.radians(GEDIPY_EASE2_PAR['second_reference_latitude']) )
+        cos_phi1 = numpy.cos( numpy.radians(GEDIPY_EASE2_PAR['second_reference_latitude']) )
+        kz = cos_phi1 / numpy.sqrt( 1.0 - e2 * sin_phi1**2 )
+
+        r0 = ( cols.size - 1 ) / 2.0
+        s0 = ( rows.size - 1 ) / 2.0
+        x = ( rows - r0 ) * binsize
+        y = ( s0 - cols ) * binsize
+
+        qp = ( ( 1.0 - e2 ) * ( ( 1.0 / ( 1.0 - e2 ) ) - ( 1.0 / ( 2.0 * GEDIPY_EASE2_PAR['map_eccentricity'] ) ) *
+             numpy.log( ( 1.0 - GEDIPY_EASE2_PAR['map_eccentricity'] ) / ( 1.0 + GEDIPY_EASE2_PAR['map_eccentricity'] ) ) ) )
+        beta = numpy.arcsin( 2.0 * y * kz / ( GEDIPY_EASE2_PAR['map_equatorial_radius_m'] * qp ) )
+        phi = ( beta + ( ( ( e2 / 3.0 ) + ( ( 31.0 / 180.0 ) * e4 ) + ( ( 517.0 / 5040.0 ) * e6 ) ) *
+              numpy.sin( 2.0 * beta ) ) + ( ( ( ( 23.0 / 360.0 ) * e4) + ( ( 251.0 / 3780.0 ) * e6 ) ) *
+              numpy.sin( 4.0 * beta ) ) + ( ( 761.0 / 45360.0 ) * e6 ) * numpy.sin( 6.0 * beta ) )
+        lam = x / ( GEDIPY_EASE2_PAR['map_equatorial_radius_m'] * kz )
+
+        longitude = numpy.degrees(lam)
+        latitude = numpy.degrees(phi)
+        while numpy.any(longitude < -180):
+            longitude[longitude < -180] += 360
+        while numpy.any(longitude > 180):
+            longitude[longitude > 180] -= 360
+
+        return longitude, latitude
+
     def init_gedi_ease2_grid(self, bbox=None, resolution=1000):
         """
         Prepare the output image
@@ -47,32 +81,9 @@ class GEDIGrid:
             print('Only 1, 3, 9, 18, and 24 km resolutions accepted')
             exit(1)
 
-        e2 = GEDIPY_EASE2_PAR['map_eccentricity']**2.0
-        e4 = GEDIPY_EASE2_PAR['map_eccentricity']**4.0
-        e6 = GEDIPY_EASE2_PAR['map_eccentricity']**6.0
-        sin_phi1 = numpy.sin( numpy.radians(GEDIPY_EASE2_PAR['second_reference_latitude']) )
-        cos_phi1 = numpy.cos( numpy.radians(GEDIPY_EASE2_PAR['second_reference_latitude']) )
-        kz = cos_phi1 / numpy.sqrt( 1.0 - e2 * sin_phi1**2 )
-
-        r0 = ( ncol - 1 ) / 2.0
-        s0 = ( nrow - 1 ) / 2.0 
-        x = ( numpy.arange(ncol, dtype=numpy.float32) - r0 ) * binsize
-        y = ( s0 - numpy.arange(nrow, dtype=numpy.float32) ) * binsize
-
-        qp = ( ( 1.0 - e2 ) * ( ( 1.0 / ( 1.0 - e2 ) ) - ( 1.0 / ( 2.0 * GEDIPY_EASE2_PAR['map_eccentricity'] ) ) * 
-             numpy.log( ( 1.0 - GEDIPY_EASE2_PAR['map_eccentricity'] ) / ( 1.0 + GEDIPY_EASE2_PAR['map_eccentricity'] ) ) ) )
-        beta = numpy.arcsin( 2.0 * y * kz / ( GEDIPY_EASE2_PAR['map_equatorial_radius_m'] * qp ) )
-        phi = ( beta + ( ( ( e2 / 3.0 ) + ( ( 31.0 / 180.0 ) * e4 ) + ( ( 517.0 / 5040.0 ) * e6 ) ) *
-              numpy.sin( 2.0 * beta ) ) + ( ( ( ( 23.0 / 360.0 ) * e4) + ( ( 251.0 / 3780.0 ) * e6 ) ) *
-              numpy.sin( 4.0 * beta ) ) + ( ( 761.0 / 45360.0 ) * e6 ) * numpy.sin( 6.0 * beta ) )
-        lam = x / ( GEDIPY_EASE2_PAR['map_equatorial_radius_m'] * kz )
-        
-        longrid = numpy.degrees(lam)
-        latgrid = numpy.degrees(phi)
-        while numpy.any(longrid < -180):
-            longrid[longrid < -180] += 360
-        while numpy.any(longrid > 180):
-            longrid[longrid > 180] -= 360
+        rows = numpy.arange(nrow, dtype=numpy.float32)
+        cols = numpy.arange(ncol, dtype=numpy.float32)
+        longrid, latgrid = self.rowcol_to_wgs84(rows, cols)
         
         if bbox:
             xmask = (longrid < bbox[2]) & (longrid >= bbox[0])
