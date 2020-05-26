@@ -37,11 +37,12 @@ class FileDatabase:
         with open(list_filename, 'r') as fid:
             for line in fid:
                 fn = line.rstrip('\n')
-                h5file = h5io.GEDIH5File(fn)
-                if h5file.is_valid():
-                    self.file_by_orbit[h5file.get_orbit_number()] = h5file
-                else:
-                    print('{} is not a valid GEDI H5 file'.format(fn))
+                if len(fn) > 0:
+                    h5file = h5io.GEDIH5File(fn)
+                    if h5file.is_valid():
+                        self.file_by_orbit[h5file.get_orbit_number()] = h5file
+                    else:
+                        print('{} is not a valid GEDI H5 file'.format(fn))
 
     def get_file(self, orbit_number):
         if orbit_number in self.file_by_orbit:
@@ -66,14 +67,15 @@ class ShotNumberDatabase:
     def add_shot_number_file(self, filename):
         with open(filename, 'r') as fid:
             for line in fid:
-                sn = ShotNumber(int(line.strip()))
-                orbit = sn.get_orbit_number()
-                beam = sn.get_beam()
-                if orbit not in self.shot_numbers_by_orbit_beam:
-                    self.shot_numbers_by_orbit_beam[orbit] = {}
-                if beam not in self.shot_numbers_by_orbit_beam[orbit]:
-                    self.shot_numbers_by_orbit_beam[orbit][beam] = []
-                self.shot_numbers_by_orbit_beam[orbit][beam].append(sn)
+                if len(line) > 1:
+                    sn = ShotNumber(int(line.strip()))
+                    orbit = sn.get_orbit_number()
+                    beam = sn.get_beam()
+                    if orbit not in self.shot_numbers_by_orbit_beam:
+                        self.shot_numbers_by_orbit_beam[orbit] = {}
+                    if beam not in self.shot_numbers_by_orbit_beam[orbit]:
+                        self.shot_numbers_by_orbit_beam[orbit][beam] = []
+                    self.shot_numbers_by_orbit_beam[orbit][beam].append(sn)
 
     def add_shot_numbers_from_h5(self, filename):
         f = h5py.File(filename, 'r')

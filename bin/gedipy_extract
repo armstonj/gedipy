@@ -54,7 +54,7 @@ if __name__ == '__main__':
     dataset_list = []
     if args.dataset_list:
         with open(args.dataset_list) as fid_dataset_list:
-            dataset_list = [line.strip() for line in fid_dataset_list.readlines()]
+            dataset_list = [line.strip() for line in fid_dataset_list.readlines() if len(line) > 1]
 
     # Open output file
     output_fid = h5py.File(args.output_file, 'w')
@@ -66,8 +66,9 @@ if __name__ == '__main__':
         if gedi_file is not None:
             print('Extracting from {} ({}/{})'.format(gedi_file.filename, i+1, number_of_files), flush=True)
             gedi_file.open()
-            for beam in shot_number_database.shot_numbers_by_orbit_beam[orbit]:
-                shots = shot_number_database.shot_numbers_by_orbit_beam[orbit][beam]
+            for beam_id in shot_number_database.shot_numbers_by_orbit_beam[orbit]:
+                shots = shot_number_database.shot_numbers_by_orbit_beam[orbit][beam_id]
+                beam = 'BEAM{:04b}'.format(beam_id)
                 gedi_file.copy_shots(output_fid, beam, shots, args.wavedata2d, dataset_list=dataset_list)
             gedi_file.close()
         else:

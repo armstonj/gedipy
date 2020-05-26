@@ -6,6 +6,7 @@ Export subsets of GEDI L1 and L2 files to CSV or GeoJSON
 
 import numpy
 import pandas
+import geopandas
 import argparse
 
 from gedipy import gedidb
@@ -21,18 +22,19 @@ if __name__ == '__main__':
     argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
         help='File containing datasets to copy (one per line)')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
-        help='File containing paths to the L1B/L2A/L2B files (one per line)')
+        help='File containing paths to the L1/L2 files (one per line)')
     argparser.add_argument('-k', '--kml', metavar='FILE', type=str,
         help='KML file to define extent of subset')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
         help='Geographic coordinate bounding box [minx maxy maxx miny]')
-    argparser.add_argument('-o', '--out_format', default='CSV', choices=['CSV','ESRI Shapefile','GeoJSON','GPKG'],
-        type=str, help='Output file format')
+    argparser.add_argument('-o', '--out-format', default='CSV', metavar='STR', 
+        type=str, choices=['CSV','ESRI Shapefile','GeoJSON','GPKG'],
+        help='Output file format')
     args = argparser.parse_args()
 
     # Load the subset geometry
     if args.bbox:
-        geom_list = [box(args.bbox[0], args.bbox[3], args.bbox[2], args.bbox[1])]
+        geom_list = userfunctions.get_polygon_from_bbox(args.bbox)
     elif args.kml:
         geom_list = userfunctions.get_polygons_from_kml(args.kml)
     else:

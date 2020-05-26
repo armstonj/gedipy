@@ -40,7 +40,7 @@ def get_shot_indices(shots, shot_number_dataset):
 def get_geom_indices(beam_group, product_id, geomlist):
     xname = GEDIPY_REFERENCE_COORDS[product_id]['x']
     yname = GEDIPY_REFERENCE_COORDS[product_id]['y']
-    shot_geoms = points(beam_group[x_name][()], y=beam_group[y_name][()])
+    shot_geoms = points(beam_group[xname][()], y=beam_group[yname][()])
     idx_extract = numpy.zeros(beam_group['shot_number'].size, dtype=numpy.bool)
     for geom in geomlist:
         mask = contains(geom, shot_geoms)
@@ -78,8 +78,8 @@ def get_dates_from_mission_weeks(start_mw, end_mw):
     return start_time, end_time
 
 
-def get_polygon_from_bbox(minx, maxy, maxx, miny):
-    geom = box(minx, miny, maxx, maxy)
+def get_polygon_from_bbox(bbox):
+    geom = box(bbox[0], bbox[3], bbox[2], bbox[1])
     result = [geom]
     return result
 
@@ -119,18 +119,29 @@ def simple_stats(x, y, z, outimage, xmin, ymax, binsize):
             outimage[1, row, col] += delta * delta2
 
 
-def finalize_simple_stats(outimage, gain=10000, offset=0, null=numpy.iinfo(numpy.uint16).max):
+def finalize_simple_stats(outgrid, profile, gain=10000, offset=0, dtype='uint16', nodata=65535):
     """
     Retrieve the mean and standard deviation and scale outputs
     """
-    variance = numpy.divide(outimage[1], outimage[2], out=numpy.zeros_like(outimage[1], dtype=numpy.float32),
-                            where=outimage[2] > 1)
-    outimage[1] = numpy.sqrt(variance) * gain + offset
-    outimage[0] = outimage[0] * gain + offset
+    tmp = numpy.empty(outgrid[0].shape)
+    tmp.fill(nodata)
+    numpy.multiply(outgrid[0], gain, out=tmp, where=outgrid[2] > 0)
+    numpy.add(tmp, offset, out=tmp, where=outgrid[2] > 0)
+    outgrid[0] = tmp
 
-    result = numpy.where(outimage[2] != null, outimage.astype(numpy.uint16), null)
+    tmp = numpy.empty(outgrid[1].shape)
+    tmp.fill(nodata)
+    numpy.divide(outgrid[1], outgrid[2], out=tmp, where=outgrid[2] > 1)
+    numpy.sqrt(tmp, out=tmp, where=outgrid[2] > 1)
+    numpy.multiply(tmp, gain, out=tmp, where=outgrid[2] > 1)
+    numpy.add(tmp, offset, out=tmp, where=outgrid[2] > 1) 
+    outgrid[1] = tmp
 
-    return result
+    gedimask = outgrid[2,:,0]
+    idx = numpy.argwhere(gedimask == profile['nodata'])
+    outgrid[:,idx,:] = nodata
+
+    return outgrid.astype(dtype)
 
 
 @jit(nopython=True)

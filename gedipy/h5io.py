@@ -6,6 +6,7 @@ I/O of GEDI H5 data products
 # Copyright (C) 2020
 
 import os
+import re
 import h5py
 import numpy
 import pandas
@@ -20,6 +21,7 @@ from pygeos import points
 
 from . import userfunctions
 from . import GEDIPY_REFERENCE_COORDS
+from . import GEDIPY_REFERENCE_DATASETS
 
 
 def append_to_h5_dataset(name, group, new_data, chunksize=(14200,), shot_axis=0, skip_if_existing=False):
@@ -37,6 +39,8 @@ def append_to_h5_dataset(name, group, new_data, chunksize=(14200,), shot_axis=0,
         if new_data.ndim == 2:
             chunksize = (128,128)
         else:
+            if not chunksize:
+                chunksize=(14200,)
             chunksize = (new_data.shape[0],) * (new_data.ndim - 1) + chunksize
         maxshape = (None,) * new_data.ndim
         group.create_dataset(name, data=new_data, maxshape=maxshape,
@@ -135,7 +139,10 @@ class GEDIH5File:
                 n = os.path.basename(name)
                 s = f[beam][name].dtype.str
                 if f[beam][name].ndim > 1:
-                    t = f[beam][name].shape[1:]
+                    if self.get_product_id() == '2A':
+                        t = f[beam][name].shape[1:]
+                    else:
+                        t = f[beam][name].shape[0:-1]
                     dtype_list.append((str(n), s, t))
                 else:
                     dtype_list.append((str(n), s))
@@ -153,7 +160,7 @@ class GEDIH5File:
 
     @staticmethod
     @jit(nopython=True)
-    def waveform_1d_to_2d(start_indices, counts, data, elev_bin0, v, out_w, out_z):
+    def waveform_1d_to_2d(start_indices, counts, data, elev_bin0, v, out_w):
         for i in range(start_indices.shape[0]):
             for j in range(counts[i]):
                 out_w[j, i] = data[start_indices[i] + j]
@@ -211,17 +218,14 @@ class GEDIH5File:
             if key not in output_fid[group].attrs.keys():
                 output_fid[group].attrs[key] = self.fid[group].attrs[key]
 
-    def export_shots(self, beam, subset, geom=False, dataset_list=[]):
+    def export_shots(self, beam, subset, dataset_list=[]):
         # Get the group information
         group = self.fid[beam]
-        product_id = self.get_product_id()
-        nshots = group['shot_number'].size
+        nshots = group['shot_number'].shape[0]
 
         # Find indices to extract
-        if geom:
-            idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
-        else:
-            idx_extract = userfunctions.get_shot_indices(group, product_id, subset)
+        product_id = self.get_product_id()
+        idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
 
         # Use h5py simple indexing - faster
         if not numpy.any(idx_extract):
@@ -229,7 +233,7 @@ class GEDIH5File:
         tmp, = numpy.nonzero(idx_extract)
         idx_start = numpy.min(tmp)
         idx_finish = numpy.max(tmp) + 1
-        idx_subset = idx_extract[idx_start:idx_finish]
+        idx_subset = tmp - idx_start
 
         # Function to extract datasets for selected shots
         def get_selected_shots(name, obj):
@@ -268,14 +272,15 @@ class GEDIH5File:
 
     def copy_shots(self, output_fid, beam, subset, output_2d, geom=False, dataset_list=[]):
         group = self.fid[beam]
-        product_id = self.get_product_id()
         nshots = group['shot_number'].size
+        product_id = self.get_product_id()
 
         # Find indices to extract
         if geom:
             idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
         else:
-            idx_extract = userfunctions.get_shot_indices(group, product_id, subset)
+            shot_numbers = group['shot_number'][()]
+            idx_extract = userfunctions.get_shot_indices(subset, shot_numbers)
 
         # Use h5py simple indexing - faster
         if not numpy.any(idx_extract):
@@ -283,7 +288,7 @@ class GEDIH5File:
         tmp, = numpy.nonzero(idx_extract)
         idx_start = numpy.min(tmp)
         idx_finish = numpy.max(tmp) + 1
-        idx_subset = idx_extract[idx_start:idx_finish]
+        idx_subset = tmp - idx_start
 
         # Create beam in output file
         if beam not in output_fid:
@@ -314,13 +319,13 @@ class GEDIH5File:
                         shot_axis = obj.shape.index(nshots)
                         if shot_axis == 0:
                             tmp = obj[idx_start:idx_finish,...]
-                            append_to_h5_dataset(name, out_group, tmp[idx_subset,...], obj.chunks, shot_axis)
+                            append_to_h5_dataset(name, out_group, tmp[idx_subset,...], chunksize=obj.chunks, shot_axis=shot_axis)
                         else:
                             tmp = obj[...,idx_start:idx_finish]
-                            append_to_h5_dataset(name, out_group, tmp[...,idx_subset], obj.chunks, shot_axis)
+                            append_to_h5_dataset(name, out_group, tmp[...,idx_subset], chunksize=obj.chunks, shot_axis=shot_axis)
                     else:
                         # ancillary / short_term datasets
-                        append_to_h5_dataset(name, out_group, obj, obj.chunks)
+                        append_to_h5_dataset(name, out_group, obj, chunksize=obj.chunks)
 
         if len(dataset_list) > 0:
             for name in dataset_list:
@@ -347,7 +352,7 @@ class GEDIH5File:
         counts = in_group[counts_name][idx_start:idx_finish]
         counts = counts[idx_subset]
         waveforms = in_group[waveform_name]
-        nshots = numpy.sum(idx_subset)
+        nshots = idx_subset.shape[0]
 
         if output_2d:
             # Get total waveform size
@@ -362,7 +367,7 @@ class GEDIH5File:
                 out_waveforms[0:counts[i], i] = waveforms[start_indices[i]:start_indices[i] + counts[i]]
 
             # Write waveforms to disk
-            append_to_h5_dataset(waveform_name, out_group, out_waveforms, (128,128), shot_axis=1)
+            append_to_h5_dataset(waveform_name, out_group, out_waveforms, chunksize=(128,128), shot_axis=1)
         else:
             # Get output waveform start indices
             out_start_indices = numpy.cumsum(counts)
@@ -388,13 +393,13 @@ class GEDIH5File:
                 out_start_indices += 1
 
             # Write waveforms to disk
-            append_to_h5_dataset(waveform_name, out_group, out_waveforms, waveforms.chunks)
-            append_to_h5_dataset(start_indices_name, out_group, out_start_indices, waveforms.chunks)
-            append_to_h5_dataset(counts_name, out_group, counts, waveforms.chunks)
+            append_to_h5_dataset(waveform_name, out_group, out_waveforms, chunksize=waveforms.chunks)
+            append_to_h5_dataset(start_indices_name, out_group, out_start_indices)
+            append_to_h5_dataset(counts_name, out_group, counts)
 
     def get_quality_flag(self, beam, sensitivity=0.9):
-        quality_name = GEDIPY_REFERENCE_COORDS[self.get_product_id()]['quality']
-        if name:
+        quality_name = GEDIPY_REFERENCE_DATASETS[self.get_product_id()]['quality']
+        if quality_name:
             beam_sensitivity = self.fid[beam]['sensitivity'][()]
             quality_flag = (self.fid[beam][quality_name][()] == 1) & (beam_sensitivity >= sensitivity) 
         else:
@@ -412,6 +417,16 @@ class GEDIH5File:
         latitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[self.get_product_id()]['y']][()]
         return longitude, latitude
     
-    def get_dataset(self, group, name):
-        dataset = self.fid[name][()]
+    def get_dataset(self, beam, name, index=None):
+        if self.fid[beam][name].ndim > 1:
+            if index:
+                if self.get_product_id() == '2A':
+                    dataset = self.fid[beam][name][:,index]
+                else:
+                    dataset = self.fid[beam][name][index,:]
+            else:
+                dataset = self.fid[beam][name][()]
+        else:
+            dataset = self.fid[beam][name][()]
         return dataset
+

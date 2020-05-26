@@ -23,7 +23,7 @@ if __name__ == '__main__':
     argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
             help='file containing datasets to copy (one per line).  If not specified, copy all datasets.')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
-            help='file containing paths to the L1A/L1B/L2A/L2B files (one per line)')
+            help='file containing paths to the L1/L2 files (one per line)')
     argparser.add_argument('--wavedata2d', default=False, action="store_true",
             help='write out the waveform data as a 2d array [%(default)s]')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     if args.kml_file is not None:
         geomlist = userfunctions.get_polygon_from_kml(args.kml_file)
     elif args.bbox is not None:
-        geomlist = userfunctions.get_polygon_from_bbox(args.bbox[0], args.bbox[1], args.bbox[2], args.bbox[3])
+        geomlist = userfunctions.get_polygon_from_bbox(args.bbox)
     else:
         print('error: --kml_file or --bbox not specified.')
         exit(1)
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     dataset_list = []
     if args.dataset_list:
         with open(args.dataset_list) as fid_dataset_list:
-            dataset_list = [line.strip() for line in fid_dataset_list.readlines()]
+            dataset_list = [line.strip() for line in fid_dataset_list.readlines() if len(line) > 1]
 
     # Open output file
     output_fid = h5py.File(args.output_file, 'w')
