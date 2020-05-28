@@ -61,6 +61,7 @@ class FileDatabase:
                             exit(1)
                         else:
                             self.file_by_orbit[orbit] = h5file
+                            product_id_list.append(product_id)
                     else:
                         print('{} is not a valid GEDI H5 file'.format(fn))
 
