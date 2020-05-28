@@ -19,13 +19,13 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=DESCRIPTION,
             formatter_class=argparse.RawDescriptionHelpFormatter)
     argparser.add_argument('output_file', metavar='FILE', type=str,
-            help='output file for selected shots')
+            help='output H5 file for selected shots')
     argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
             help='file containing datasets to copy (one per line).  If not specified, copy all datasets.')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
-            help='file containing paths to the L1/L2 files (one per line)')
+            help='file containing paths to the H5 files (one per line)')
     argparser.add_argument('--wavedata2d', default=False, action="store_true",
-            help='write out the waveform data as a 2d array [%(default)s]')
+            help='write out the GEDI waveform data as a 2d array [%(default)s]')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
             help='geographic coordinate bounding box [minx maxy maxx miny]')
     argparser.add_argument('-k', '--kml_file', metavar='FILE', type=str,

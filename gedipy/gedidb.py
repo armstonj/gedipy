@@ -36,15 +36,31 @@ class ShotNumber:
 class FileDatabase:
     def __init__(self):
         self.file_by_orbit = {}
+    
+    def get_reader(self, filename):
+        for cls in h5io.LidarFile.__subclasses__():
+            try:
+                h5_file = cls(filename)
+                h5_file.open()
+                return h5_file
+            except h5io.GEDIPyDriverError:
+                pass
 
     def add_file_list(self, list_filename):
         with open(list_filename, 'r') as fid:
+            product_id_list = []
             for line in fid:
                 fn = line.rstrip('\n')
                 if len(fn) > 0:
-                    h5file = h5io.GEDIH5File(fn)
+                    h5file = self.get_reader(fn)
                     if h5file.is_valid():
-                        self.file_by_orbit[h5file.get_orbit_number()] = h5file
+                        orbit = h5file.get_orbit_number()
+                        product_id = h5file.get_product_id()
+                        if product_id not in product_id_list and len(product_id_list) > 0:
+                            print('Multiple lidar file types in {}'.format(list_filename))
+                            exit(1)
+                        else:
+                            self.file_by_orbit[orbit] = h5file
                     else:
                         print('{} is not a valid GEDI H5 file'.format(fn))
 
@@ -78,7 +94,8 @@ class FileDatabase:
                 if os.path.exists(fn):
                     h5file = h5io.GEDIH5File(fn)
                     if h5file.is_valid():
-                        self.file_by_orbit[h5file.get_orbit_number()] = h5file
+                        orbit = h5file.get_orbit_number()
+                        self.file_by_orbit[orbit] = h5file
                     else:
                         print('{} is not a valid GEDI H5 file'.format(fn))
 

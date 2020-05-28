@@ -34,7 +34,7 @@ class GEDIGrid:
         self.outproj = pyproj.Proj(init=str(profile['crs']))
         self.gedi_domain = gedi_domain
 
-    def rowcol_to_wgs84(self, rows, cols):
+    def rowcol_to_wgs84(self, rows, cols, binsize):
         """
         Function to convert EASE 2.0 grid row/cols to WGS84 (EPSG:4326 coordinates)
         Should probably be replaced with a call to pyproj
@@ -46,10 +46,10 @@ class GEDIGrid:
         cos_phi1 = numpy.cos( numpy.radians(GEDIPY_EASE2_PAR['second_reference_latitude']) )
         kz = cos_phi1 / numpy.sqrt( 1.0 - e2 * sin_phi1**2 )
 
-        r0 = ( cols.size - 1 ) / 2.0
-        s0 = ( rows.size - 1 ) / 2.0
-        x = ( rows - r0 ) * binsize
-        y = ( s0 - cols ) * binsize
+        s0 = ( cols.size - 1 ) / 2.0
+        r0 = ( rows.size - 1 ) / 2.0
+        x = ( cols - s0 ) * binsize
+        y = ( r0 - rows ) * binsize
 
         qp = ( ( 1.0 - e2 ) * ( ( 1.0 / ( 1.0 - e2 ) ) - ( 1.0 / ( 2.0 * GEDIPY_EASE2_PAR['map_eccentricity'] ) ) *
              numpy.log( ( 1.0 - GEDIPY_EASE2_PAR['map_eccentricity'] ) / ( 1.0 + GEDIPY_EASE2_PAR['map_eccentricity'] ) ) ) )
@@ -83,7 +83,7 @@ class GEDIGrid:
 
         rows = numpy.arange(nrow, dtype=numpy.float32)
         cols = numpy.arange(ncol, dtype=numpy.float32)
-        longrid, latgrid = self.rowcol_to_wgs84(rows, cols)
+        longrid, latgrid = self.rowcol_to_wgs84(rows, cols, binsize)
         
         if bbox:
             xmask = (longrid < bbox[2]) & (longrid >= bbox[0])
@@ -91,9 +91,9 @@ class GEDIGrid:
             ymask = (latgrid < bbox[1]) & (latgrid >= bbox[3])
             nrow = numpy.count_nonzero(ymask)
             
-            idx = numpy.ix_(ymask,xmask)
-            xmin = GEDIPY_EASE2_PAR['xmin'] + numpy.min(idx[1]) * binsize
-            ymax = GEDIPY_EASE2_PAR['ymax'] - numpy.min(idx[0]) * binsize
+            idx = numpy.ix_(xmask,ymask)
+            xmin = GEDIPY_EASE2_PAR['xmin'] + numpy.min(idx[0]) * binsize
+            ymax = GEDIPY_EASE2_PAR['ymax'] - numpy.min(idx[1]) * binsize
             
             longrid = longrid[xmask]
             latgrid = latgrid[ymask] 

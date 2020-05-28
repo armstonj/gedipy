@@ -17,16 +17,18 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     argparser.add_argument('output_file', metavar='FILE', type=str,
-        help='Output grid filename')
+        help='Output GeoTiff grid filename')
     argparser.add_argument('-d', '--dataset', metavar='STR', type=str,
         help='H5 dataset name to grid')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
-        help='File containing paths to the L1/L2 files (one per line)')
+        help='File containing paths to the H5 files (one per line)')
     argparser.add_argument('-r', '--resolution', metavar='INT', type=int, default=1000, 
         choices=[100,500,1000,3000,9000,18000,24000],
         help='Spatial resolution of output grid (m)')
+    argparser.add_argument('-g', '--gedi_domain', metavar='FLOAT', type=float, default=52,
+        help='Latitudinal extent of the GEDI domain (degrees)')
     argparser.add_argument('-s', '--sensitivity', metavar='FLOAT', type=float, default=0.9,
-        help='Additional beam senstivity threshold filter to apply')
+        help='Additional GEDI beam sensitivity threshold filter to apply')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
         help='Geographic coordinate bounding box to clip the grid to [minx maxy maxx miny]')
     argparser.add_argument('-u','--userfunc', metavar='STR', type=str, default='simple_stats',
@@ -44,9 +46,9 @@ if __name__ == '__main__':
     # Setup the GEDI grid
     gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
     if args.resolution >= 1000:
-        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution)
+        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution, gedi_domain=args.gedi_domain)
     else:
-        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox)
+        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, gedi_domain=args.gedi_domain)
         gedi_grid.zoom_gedi_grid(resolution=args.resolution)
 
     # Loop through each h5 file and beam
@@ -58,8 +60,8 @@ if __name__ == '__main__':
             h5file.open()
             for beam in h5file.beams:
                 longitude, latitude = h5file.get_coordinates(beam)
-                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity)
                 dataset = h5file.get_dataset(beam, args.dataset)
+                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity, dataset=dataset)
                 gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], func=args.userfunc)
             h5file.close()
 

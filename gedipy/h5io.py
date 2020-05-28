@@ -15,7 +15,6 @@ import datetime
 from numba import jit
 
 from pygeos import box
-from pygeos import Geometry
 from pygeos import contains
 from pygeos import points
 
@@ -26,7 +25,7 @@ from . import GEDIPY_REFERENCE_DATASETS
 
 def append_to_h5_dataset(name, group, new_data, chunksize=(14200,), shot_axis=0, skip_if_existing=False):
     """
-    Write/append a dataset to a GEDI H5 file
+    Write/append a dataset to a H5 file
     Args:
         name (str): The dataset name
         group (obj): The h5py handle to the group with the dataset 
@@ -88,7 +87,22 @@ def write_dict_to_h5(group, name, data):
                 raise ValueError('Cannot write {} to h5'.format(type(i)))
 
 
-class GEDIH5File:
+class Error(Exception):
+    """Base class for exceptions in this module."""
+    pass
+
+
+class GEDIPyDriverError(Error):
+    """Raised when the driver is invalid"""
+    pass
+
+
+class LidarFile:
+    def __init__(self, filename):
+        self.filename = filename
+
+
+class GEDIH5File(LidarFile):
     def __init__(self, filename):
         self.filename = filename
         self.filename_pattern = re.compile(r'GEDI0(1|2)_(A|B)_(\d{13})_O(\d{5})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})\.h5')
@@ -123,6 +137,9 @@ class GEDIH5File:
 
     def open(self):
         self.fid = h5py.File(self.filename, 'r')
+        gedi_product_names = (b'GEDI01_A',b'GEDI01_B',b'GEDI02_A',b'GEDI02_B')
+        if self.fid.attrs['short_name'] not in gedi_product_names:
+            raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid.keys() if beam.startswith('BEAM')]
 
     def close(self):
@@ -397,11 +414,14 @@ class GEDIH5File:
             append_to_h5_dataset(start_indices_name, out_group, out_start_indices)
             append_to_h5_dataset(counts_name, out_group, counts)
 
-    def get_quality_flag(self, beam, sensitivity=0.9):
+    def get_quality_flag(self, beam, **kwargs):
         quality_name = GEDIPY_REFERENCE_DATASETS[self.get_product_id()]['quality']
         if quality_name:
             beam_sensitivity = self.fid[beam]['sensitivity'][()]
-            quality_flag = (self.fid[beam][quality_name][()] == 1) & (beam_sensitivity >= sensitivity) 
+            quality_flag = (self.fid[beam][quality_name][()] == 1)
+            if 'sensitivity' in kwargs:
+                beam_sensitivity = self.fid[beam]['sensitivity'][()]
+                quality_flag &= (beam_sensitivity >= sensitivity)
         else:
             quality_flag = numpy.ones(self.get_nrecords(), dtype=numpy.bool)
         return quality_flag
@@ -426,6 +446,242 @@ class GEDIH5File:
                     dataset = self.fid[beam][name][index,:]
             else:
                 dataset = self.fid[beam][name][()]
+        else:
+            dataset = self.fid[beam][name][()]
+        return dataset
+
+
+class ATL03H5File(LidarFile):
+    def __init__(self, filename):
+        self.filename = filename
+        self.filename_pattern = re.compile(r'ATL03_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
+
+    def is_valid(self):
+        return h5py.is_hdf5(self.filename)
+
+    def is_valid_filename(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return True
+        else:
+            return False
+
+    def get_product_id(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(0))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_datetime(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return datetime.datetime(m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_rgt_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(7))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_cycle_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(8))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_segment_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(9))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_version_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(10))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_revision_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(11))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def open(self):
+        self.fid = h5py.File(self.filename, 'r')
+        if self.fid.attrs['short_name'] != b'ATL03':
+            raise GEDIPyDriverError
+        self.beams = [beam for beam in self.fid.keys() if beam.startswith('gt')]
+
+    def close(self):
+        self.fid.close()
+        self.beams = None
+
+    def get_orbit(self):
+        orbit = self.fid['ancillary_data']['start_orbit'][0]
+        return int(orbit)
+
+    def get_orbit_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return '{}{}{}'.format(m.group(7),m.group(8),m.group(9))
+        else:
+            raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
+
+    def get_quality_flag(self, beam, **kwargs):
+        quality_flag = self.fid[beam]['heights']['signal_conf_ph'][:,0]
+        if 'dataset' in kwargs:
+            if numpy.issubdtype(kwargs['dataset'].dtype, numpy.integer):
+                quality_flag &= (kwargs['dataset'] < numpy.iinfo(kwargs['dataset'].dtype).max)
+            else:
+                quality_flag &= (kwargs['dataset'] < numpy.finfo(kwargs['dataset'].dtype).max)
+        return quality_flag
+
+    def get_coordinates(self, beam, ht=False):
+        longitude = self.fid[beam]['heights']['lon_ph'][()]
+        latitude = self.fid[beam]['heights']['lat_ph'][()]
+        if ht:
+            elevation = self.fid[beam]['heights']['ht_ph'][()]
+            return longitude, latitude, elevation
+        else:
+            return longitude, latitude
+
+    def get_dataset(self, beam, name, index=None):
+        if index:
+            dataset = self.fid[beam][name][...,index]
+        else:
+            dataset = self.fid[beam][name][()]
+        return dataset
+
+
+class ATL08H5File(LidarFile):
+    def __init__(self, filename):
+        self.filename = filename
+        self.filename_pattern = re.compile(r'ATL(\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
+
+    def is_valid(self):
+        return h5py.is_hdf5(self.filename)
+
+    def is_valid_filename(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return True
+        else:
+            return False
+
+    def get_product_id(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(0))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_datetime(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return datetime.datetime(m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.grou(6))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_rgt_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(7))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_cycle_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(8))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_segment_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(9))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_version_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(10))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_revision_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return int(m.group(11))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def open(self):
+        self.fid = h5py.File(self.filename, 'r')
+        if self.fid.attrs['short_name'] != b'ATL08':
+            raise GEDIPyDriverError
+        self.beams = [beam for beam in self.fid.keys() if beam.startswith('gt')]
+
+    def close(self):
+        self.fid.close()
+        self.beams = None
+
+    def get_orbit(self):
+        orbit = self.fid['ancillary_data']['start_orbit'][0]
+        return int(orbit)
+
+    def get_orbit_number(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return '{}{}{}'.format(m.group(7),m.group(8),m.group(9))
+        else:
+            raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
+
+    def get_photon_class(self, beam):
+        photon_class = self.fid[beam]['signal_photons']['classed_pc_flag'][()]
+        return photon_class
+
+    def get_photon_index(self, beam):
+        photon_index = self.fid[beam]['signal_photons']['classed_pc_indx'][()] - 1
+        return photon_index
+
+    def get_photon_segment_id(self, beam):
+        segment_id = self.fid[beam]['signal_photons']['ph_segment_id'][()]
+        return segment_id
+
+    def get_coordinates(self, beam):
+        longitude = self.fid[beam]['land_segments']['longitude'][()]
+        latitude = self.fid[beam]['land_segments']['latitude'][()]
+        return longitude, latitude
+
+    def get_quality_flag(self, beam, **kwargs):
+        quality_flag = (self.fid[beam]['land_segments']['msw_flag'][()] == 1)
+        quality_flag &= (self.fid[beam]['land_segments']['night_flag'][()] == 1)
+        quality_flag &= (self.fid[beam]['land_segments']['terrain_flg'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments']['segment_watermask'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments']['layer_flag'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments']['dem_removal_flag'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments']['ph_removal_flag'][()] == 0)
+        if 'dataset' in kwargs:
+            if numpy.issubdtype(kwargs['dataset'].dtype, numpy.integer):
+                quality_flag &= (kwargs['dataset'] < numpy.iinfo(kwargs['dataset'].dtype).max)
+            else:
+                quality_flag &= (kwargs['dataset'] < numpy.finfo(kwargs['dataset'].dtype).max)
+        return quality_flag
+
+    def get_dataset(self, beam, name, index=None):
+        if index:
+            dataset = self.fid[beam][name][...,index]
         else:
             dataset = self.fid[beam][name][()]
         return dataset

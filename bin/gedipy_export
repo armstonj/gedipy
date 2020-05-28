@@ -23,7 +23,7 @@ if __name__ == '__main__':
     argparser.add_argument('-d', '--dataset-list', metavar='FILE', type=str,
         help='File containing datasets to copy (one per line)')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
-        help='File containing paths to the L1/L2 files (one per line)')
+        help='File containing paths to the H5 files (one per line)')
     argparser.add_argument('-k', '--kml', metavar='FILE', type=str,
         help='KML file to define extent of subset')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
@@ -60,13 +60,15 @@ if __name__ == '__main__':
         exit(1)
     
     # Loop through each h5 file and beam
-    number_of_files = len(file_database.file_by_orbit)
+    number_of_orbits = len(file_database.file_by_orbit)
     outdata_list = []
+    product_id = None
     for i,orbit in enumerate(file_database.file_by_orbit):
-        h5file = file_database.get_file(orbit)
-        if h5file:
-            print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
-            product_id = h5_file.get_product_id()
+        print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_orbits), flush=True)
+        h5_file = file_database.get_file(orbit)
+        if h5_file is not None:
+            if not product_id:
+                product_id = h5_file.get_product_id()
             h5file.open()
             for beam in h5file.beams:
                 outdata = h5file.export_shots(beam, geom_list, dataset_list=dataset_list)
