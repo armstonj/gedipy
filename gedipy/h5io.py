@@ -554,12 +554,6 @@ class ATL03H5File(LidarFile):
         else:
             return longitude, latitude
 
-    @staticmethod
-    @jit(nopython=True)
-    def atl08_to_atl03_photon_labels(atl08_ph_index_beg, atl08_ph_index, atl08_ph_class, atl03_ph_class):
-        for i in range(atl08_ph_index_beg.shape[0]):
-            idx = atl08_ph_index_beg[i] + atl08_ph_index[i]
-
     def get_nrecords(self, beam):
         nrecords = self.fid[beam]['gt1l']['heights']['delta_time'].shape[0]
         return nrecords
