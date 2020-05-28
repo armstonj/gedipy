@@ -554,6 +554,31 @@ class ATL03H5File(LidarFile):
         else:
             return longitude, latitude
 
+    @staticmethod
+    @jit(nopython=True)
+    def atl08_to_atl03_photon_labels(atl08_ph_index_beg, atl08_ph_index, atl08_ph_class, atl03_ph_class):
+        for i in range(atl08_ph_index_beg.shape[0]):
+            idx = atl08_ph_index_beg[i] + atl08_ph_index[i]
+
+    def get_nrecords(self, beam):
+        nrecords = self.fid[beam]['gt1l']['heights']['delta_time'].shape[0]
+        return nrecords
+
+    def get_photon_labels(self, beam, atl08_fid):
+        ph_index_beg = self.fid[beam]['geolocation']['ph_index_beg'][()]
+        segment_id = self.fid[beam]['geolocation']['segment_id'][()] 
+        valid_idx = ph_index_beg > 0
+        
+        idx = numpy.searchsorted(segment_id[valid_idx], atl08_fid.get_photon_segment_id(beam), side='left')
+        atl08_ph_index_beg = ph_index_beg[valid_idx][idx] - 1
+        
+        atl08_ph_index = atl08_fid.get_photon_index(beam)
+        idx = atl08_ph_index_beg + atl08_fid.get_photon_index(beam)
+        atl03_class = numpy.zeroes(self.get_nrecords(beam), dtype=numpy.uint8)
+        atl03_class[idx] = atl08_fid.get_photon_class(beam)
+         
+        return atl03_class
+
     def get_dataset(self, beam, name, index=None):
         if index:
             dataset = self.fid[beam][name][...,index]
