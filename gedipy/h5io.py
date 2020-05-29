@@ -599,7 +599,7 @@ class ATL08H5File(LidarFile):
     def get_product_id(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(1))
+            return m.group(1)
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
