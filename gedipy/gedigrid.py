@@ -30,8 +30,8 @@ class GEDIGrid:
     def __init__(self, filename, profile=GEDIPY_RIO_DEFAULT_PROFILE, gedi_domain=52):
         self.filename = filename
         self.profile = profile
-        self.inproj = pyproj.Proj(init='epsg:4326')
-        self.outproj = pyproj.Proj(init=str(profile['crs']))
+        self.inproj = pyproj.Proj('epsg:4326')
+        self.outproj = pyproj.Proj(str(profile['crs']))
         self.gedi_domain = gedi_domain
 
     def rowcol_to_wgs84(self, rows, cols, binsize):
