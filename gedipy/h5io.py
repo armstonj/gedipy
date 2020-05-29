@@ -454,7 +454,7 @@ class GEDIH5File(LidarFile):
 class ATL03H5File(LidarFile):
     def __init__(self, filename):
         self.filename = filename
-        self.filename_pattern = re.compile(r'ATL03_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
+        self.filename_pattern = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
 
     def is_valid(self):
         return h5py.is_hdf5(self.filename)
@@ -469,49 +469,49 @@ class ATL03H5File(LidarFile):
     def get_product_id(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(0))
+            return m.group(1)
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_datetime(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return datetime.datetime(m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6))
+            return datetime.datetime(m.group(2), m.group(3), m.group(4), m.group(5), m.group(6), m.group(7))
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_rgt_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(7))
+            return int(m.group(8))
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_cycle_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(8))
+            return int(m.group(9))
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_segment_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(9))
+            return int(m.group(10))
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_version_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(10))
+            return int(m.group(11))
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_revision_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(11))
+            return int(m.group(12))
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
@@ -584,7 +584,7 @@ class ATL03H5File(LidarFile):
 class ATL08H5File(LidarFile):
     def __init__(self, filename):
         self.filename = filename
-        self.filename_pattern = re.compile(r'ATL(\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
+        self.filename_pattern = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
 
     def is_valid(self):
         return h5py.is_hdf5(self.filename)
@@ -599,49 +599,49 @@ class ATL08H5File(LidarFile):
     def get_product_id(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(0))
+            return int(m.group(1))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_datetime(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return datetime.datetime(m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.grou(6))
+            return datetime.datetime(m.group(2), m.group(3), m.group(4), m.group(5), m.group(6), m.group(7))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_rgt_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(7))
+            return int(m.group(8))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_cycle_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(8))
+            return int(m.group(9))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_segment_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(9))
+            return int(m.group(10))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_version_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(10))
+            return int(m.group(11))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_revision_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(11))
+            return int(m.group(12))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 

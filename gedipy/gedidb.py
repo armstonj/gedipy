@@ -59,9 +59,8 @@ class FileDatabase:
                         if product_id not in product_id_list and len(product_id_list) > 0:
                             print('Multiple lidar file types in {}'.format(list_filename))
                             exit(1)
-                        else:
-                            self.file_by_orbit[orbit] = h5file
-                            product_id_list.append(product_id)
+                        self.file_by_orbit[orbit] = h5file
+                        product_id_list.append(product_id)
                     else:
                         print('{} is not a valid GEDI H5 file'.format(fn))
 

@@ -44,9 +44,10 @@ if __name__ == '__main__':
         exit(1)
 
     # Setup the GEDI grid
-    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
+    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE, 
+        gedi_domain=args.gedi_domain)
     if args.resolution >= 1000:
-        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution, gedi_domain=args.gedi_domain)
+        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution)
     else:
         gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, gedi_domain=args.gedi_domain)
         gedi_grid.zoom_gedi_grid(resolution=args.resolution)
