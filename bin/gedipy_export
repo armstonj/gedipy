@@ -39,8 +39,7 @@ if __name__ == '__main__':
     elif args.kml:
         geom_list = userfunctions.get_polygons_from_kml(args.kml)
     else:
-        print('error: --bbox and --kml not specified.')
-        exit(1)
+        geom_list = None
 
     # Load file database
     file_database = gedidb.FileDatabase()
@@ -64,7 +63,7 @@ if __name__ == '__main__':
     outdata_list = []
     product_id = None
     for i,orbit in enumerate(file_database.file_by_orbit):
-        print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_orbits), flush=True)
+        print('Exporting {} ({}/{})'.format(h5file.filename, i+1, number_of_orbits), flush=True)
         h5_file = file_database.get_file(orbit)
         if h5_file is not None:
             if not product_id:

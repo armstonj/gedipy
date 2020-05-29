@@ -241,16 +241,21 @@ class GEDIH5File(LidarFile):
         nshots = group['shot_number'].shape[0]
 
         # Find indices to extract
-        product_id = self.get_product_id()
-        idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
+        if subset:
+            product_id = self.get_product_id()
+            idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
 
-        # Use h5py simple indexing - faster
-        if not numpy.any(idx_extract):
-            return
-        tmp, = numpy.nonzero(idx_extract)
-        idx_start = numpy.min(tmp)
-        idx_finish = numpy.max(tmp) + 1
-        idx_subset = tmp - idx_start
+            # Use h5py simple indexing - faster
+            if not numpy.any(idx_extract):
+                return
+            tmp, = numpy.nonzero(idx_extract)
+            idx_start = numpy.min(tmp)
+            idx_finish = numpy.max(tmp) + 1
+            idx_subset = tmp - idx_start
+        else:
+            idx_start = 0
+            idx_finish = self.get_nrecords()
+            idx_subset = None
 
         # Function to extract datasets for selected shots
         def get_selected_shots(name, obj):
@@ -269,7 +274,10 @@ class GEDIH5File(LidarFile):
                     else:
                         print('{} is not a 1D or 2D dataset'.format(name))
                         raise
-                    df = pandas.DataFrame(data=arr[idx_subset,...], columns=colnames)
+                    if idx_subset:
+                        df = pandas.DataFrame(data=arr[idx_subset,...], columns=colnames)
+                    else:
+                        df = pandas.DataFrame(data=arr, columns=colnames)
                     datasets.append(df)
                 except ValueError:
                     print('{} is not a footprint level dataset'.format(name))

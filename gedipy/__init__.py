@@ -13,7 +13,7 @@ GEDIPY_REFERENCE_COORDS = {'1A': {'x': 'geolocation/longitude_bin0', 'y': 'geolo
                            '2A': {'x': 'lon_lowestmode', 'y': 'lat_lowestmode', 't': 'delta_time'},
                            '2B': {'x': 'geolocation/lon_lowestmode', 'y': 'geolocation/lat_lowestmode', 't': 'geolocation/delta_time'},
                            'ATL03': {'x': 'heights/lon_ph', 'y': 'heights/lat_ph', 't': 'heights/delta_time'},
-                           'ATL08': {'x': 'land_segments/longitude', 'y': 'land_segments/longitude', 't': 'land_segments/delta_time'}}
+                           'ATL08': {'x': 'land_segments/longitude', 'y': 'land_segments/latitude', 't': 'land_segments/delta_time'}}
 
 GEDIPY_REFERENCE_DATASETS = {'1A': {'quality': None},
                              '1B': {'quality': None},

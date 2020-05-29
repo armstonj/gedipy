@@ -6,6 +6,7 @@ Classes to provide an interface to GEDI files, orbits and shot numbers
 # Copyright (C) 2020
 
 import os
+import sys
 import h5py
 import numpy
 import json
@@ -45,6 +46,9 @@ class FileDatabase:
                 return h5_file
             except h5io.GEDIPyDriverError:
                 pass
+            except:
+                print('Unexpected error:', sys.exc_info()[0])
+                raise
 
     def add_file_list(self, list_filename):
         with open(list_filename, 'r') as fid:
