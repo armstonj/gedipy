@@ -13,6 +13,7 @@ import pandas
 import datetime
 
 from numba import jit
+from numba import prange
 
 from pygeos import box
 from pygeos import contains
@@ -137,7 +138,7 @@ class GEDIH5File(LidarFile):
 
     def open(self):
         self.fid = h5py.File(self.filename, 'r')
-        gedi_product_names = (b'GEDI01_A',b'GEDI01_B',b'GEDI02_A',b'GEDI02_B')
+        gedi_product_names = ('GEDI_L1A','GEDI_L1B','GEDI_L2A','GEDI_L2B','GEDI_L4A')
         if self.fid.attrs['short_name'] not in gedi_product_names:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid.keys() if beam.startswith('BEAM')]
@@ -148,18 +149,18 @@ class GEDIH5File(LidarFile):
 
     def read_shots(self, beam, start=0, finish=None, dataset_list=[]):
         if not finish:
-            finish = f[beam]['shot_number'].shape[0]
+            finish = self.fid[beam]['shot_number'].shape[0]
 
         dtype_list = []
         for name in dataset_list:
-            if isinstance(f[beam][name], h5py.Dataset):
+            if isinstance(self.fid[beam][name], h5py.Dataset):
                 n = os.path.basename(name)
-                s = f[beam][name].dtype.str
-                if f[beam][name].ndim > 1:
+                s = self.fid[beam][name].dtype.str
+                if self.fid[beam][name].ndim > 1:
                     if self.get_product_id() == '2A':
-                        t = f[beam][name].shape[1:]
+                        t = self.fid[beam][name].shape[1:]
                     else:
-                        t = f[beam][name].shape[0:-1]
+                        t = self.fid[beam][name].shape[0:-1]
                     dtype_list.append((str(n), s, t))
                 else:
                     dtype_list.append((str(n), s))
@@ -168,19 +169,19 @@ class GEDIH5File(LidarFile):
         data = numpy.empty(num_records, dtype=dtype_list)
         for i,name in enumerate(dataset_list):
             n = dtype_list[i][0]
-            if isinstance(f[beam][name], h5py.Dataset):
-                data[n] = f[beam][name][start:finish]
+            if isinstance(self.fid[beam][name], h5py.Dataset):
+                data[n] = self.fid[beam][name][start:finish]
             else:
                 print('{} not found'.format(name))
 
         return data
 
     @staticmethod
-    @jit(nopython=True)
-    def waveform_1d_to_2d(start_indices, counts, data, elev_bin0, v, out_w):
-        for i in range(start_indices.shape[0]):
-            for j in range(counts[i]):
-                out_w[j, i] = data[start_indices[i] + j]
+    @jit(nopython=True, parallel=True)
+    def waveform_1d_to_2d(start_indices, counts, data, out_data):
+        for i in prange(start_indices.shape[0]):
+            for j in prange(counts[i]):
+                out_data[j, i] = data[start_indices[i] + j]
 
     def read_tx_waveform(self, beam, start=0, finish=None, minlength=None):
         if not finish:
@@ -197,7 +198,7 @@ class GEDIH5File(LidarFile):
 
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
-        waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+        self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
 
         return out_waveforms
 
@@ -216,19 +217,53 @@ class GEDIH5File(LidarFile):
         
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
-        waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+        self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
         
         if elevation:
             elev_bin0 = self.fid[beam]['geolocation']['elevation_bin0'][start:finish]
-            elev_lastbin = self.fid[beam]['geolocation']['elevation_lastbin'][start_finish]
+            elev_lastbin = self.fid[beam]['geolocation']['elevation_lastbin'][start:finish]
             v = (elev_bin0 - elev_lastbin) / (counts - 1)
             
-            bin_dist = numpy.arange(max_count) * v
-            out_elevation = elev_bin0 - numpy.repeat(bin_dist[numpy.newaxis],v.shape[0],axis=0)
+            bin_dist = numpy.expands_dims(numpy.arange(max_count), axis=1)
+            out_elevation = (numpy.expands_dims(elev_bin0, axis=0) - 
+                numpy.repeat(bin_dist,v.shape[0],axis=1) * v)
             
             return out_waveforms, out_elevation
         else:
             return out_waveforms
+
+    def read_pgap_theta_z(self, beam, start=0, finish=None, minlength=None, height=False):
+        if not finish:
+            finish = self.fid[beam]['rx_sample_start_index'].shape[0]
+
+        start_indices = self.fid[beam]['rx_sample_start_index'][start:finish] - 1
+        counts = self.fid[beam]['rx_sample_count'][start:finish]
+        pgap_profile = self.fid[beam]['pgap_theta_z'][start_indices[0]:(start_indices[-1]+counts[-1])]
+
+        max_count = numpy.max(counts)
+        if minlength:
+            max_count = max(minlength, max_count)
+        out_shape = (max_count, counts.shape[0])
+
+        out_pgap_profile = numpy.ones(out_shape, dtype=pgap_profile.dtype)
+        pgap = self.fid[beam]['pgap_theta'][start:finish]
+        out_pgap_profile *= numpy.expand_dims(pgap, axis=0)
+        
+        start_indices -= numpy.min(start_indices)
+        self.waveform_1d_to_2d(start_indices, counts, pgap_profile, out_pgap_profile)
+
+        if height:
+            height_bin0 = self.fid[beam]['geolocation']['height_bin0'][start:finish]
+            height_lastbin = self.fid[beam]['geolocation']['height_lastbin'][start:finish]
+            v = (height_bin0 - height_lastbin) / (counts - 1)
+
+            bin_dist = numpy.expand_dims(numpy.arange(max_count), axis=1)
+            out_height = (numpy.expand_dims(height_bin0, axis=0) - 
+                numpy.repeat(bin_dist,v.shape[0],axis=1) * v)
+
+            return out_pgap_profile, out_height
+        else:
+            return out_pgap_profile
 
     def copy_attrs(self, output_fid, group):
         for key in self.fid[group].attrs.keys():
@@ -557,13 +592,13 @@ class ATL03H5File(LidarFile):
         longitude = self.fid[beam]['heights']['lon_ph'][()]
         latitude = self.fid[beam]['heights']['lat_ph'][()]
         if ht:
-            elevation = self.fid[beam]['heights']['ht_ph'][()]
+            elevation = self.fid[beam]['heights']['h_ph'][()]
             return longitude, latitude, elevation
         else:
             return longitude, latitude
 
     def get_nrecords(self, beam):
-        nrecords = self.fid[beam]['gt1l']['heights']['delta_time'].shape[0]
+        nrecords = self.fid[beam]['heights']['delta_time'].shape[0]
         return nrecords
 
     def get_photon_labels(self, beam, atl08_fid):
@@ -576,7 +611,7 @@ class ATL03H5File(LidarFile):
         
         atl08_ph_index = atl08_fid.get_photon_index(beam)
         idx = atl08_ph_index_beg + atl08_fid.get_photon_index(beam)
-        atl03_class = numpy.zeroes(self.get_nrecords(beam), dtype=numpy.uint8)
+        atl03_class = numpy.zeros(self.get_nrecords(beam), dtype=numpy.uint8)
         atl03_class[idx] = atl08_fid.get_photon_class(beam)
          
         return atl03_class
