@@ -178,10 +178,10 @@ class GEDIH5File(LidarFile):
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def waveform_1d_to_2d(start_indices, counts, data, out_data):
+    def waveform_1d_to_2d(start_indices, counts, data, out_data, start_offset=0):
         for i in prange(start_indices.shape[0]):
             for j in prange(counts[i]):
-                out_data[j, i] = data[start_indices[i] + j]
+                out_data[j+start_offset, i] = data[start_indices[i] + j]
 
     def read_tx_waveform(self, beam, start=0, finish=None, minlength=None):
         if not finish:
@@ -232,7 +232,7 @@ class GEDIH5File(LidarFile):
         else:
             return out_waveforms
 
-    def read_pgap_theta_z(self, beam, start=0, finish=None, minlength=None, height=False):
+    def read_pgap_theta_z(self, beam, start=0, finish=None, minlength=None, height=False, start_offset=0):
         if not finish:
             finish = self.fid[beam]['rx_sample_start_index'].shape[0]
 
@@ -240,7 +240,7 @@ class GEDIH5File(LidarFile):
         counts = self.fid[beam]['rx_sample_count'][start:finish]
         pgap_profile = self.fid[beam]['pgap_theta_z'][start_indices[0]:(start_indices[-1]+counts[-1])]
 
-        max_count = numpy.max(counts)
+        max_count = numpy.max(counts) + start_offset
         if minlength:
             max_count = max(minlength, max_count)
         out_shape = (max_count, counts.shape[0])
@@ -248,9 +248,10 @@ class GEDIH5File(LidarFile):
         out_pgap_profile = numpy.ones(out_shape, dtype=pgap_profile.dtype)
         pgap = self.fid[beam]['pgap_theta'][start:finish]
         out_pgap_profile *= numpy.expand_dims(pgap, axis=0)
-        
+        out_pgap_profile[0:start_offset,:] = 1.0        
+
         start_indices -= numpy.min(start_indices)
-        self.waveform_1d_to_2d(start_indices, counts, pgap_profile, out_pgap_profile)
+        self.waveform_1d_to_2d(start_indices, counts, pgap_profile, out_pgap_profile, start_offset=start_offset)
 
         if height:
             height_bin0 = self.fid[beam]['geolocation']['height_bin0'][start:finish]
@@ -259,7 +260,8 @@ class GEDIH5File(LidarFile):
 
             bin_dist = numpy.expand_dims(numpy.arange(max_count), axis=1)
             out_height = (numpy.expand_dims(height_bin0, axis=0) - 
-                numpy.repeat(bin_dist,v.shape[0],axis=1) * v)
+                numpy.repeat(bin_dist,v.shape[0],axis=1) * v + 
+                start_offset * v)
 
             return out_pgap_profile, out_height
         else:
