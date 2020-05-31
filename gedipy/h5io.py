@@ -574,6 +574,11 @@ class ATL03H5File(LidarFile):
         orbit = self.fid['ancillary_data']['start_orbit'][0]
         return int(orbit)
 
+    def get_atlas_orientation(self):
+        flags = {0: 'backward', 1: 'forward', 2: 'transition'}
+        sc_orient = self.fid['orbit_info']['sc_orient'][0] 
+        return flags[sc_orient]
+
     def get_orbit_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
