@@ -27,13 +27,21 @@ from . import GEDIPY_REFERENCE_DATASETS
 def append_to_h5_dataset(name, group, new_data, chunksize=(14200,), shot_axis=0, skip_if_existing=False):
     """
     Write/append a dataset to a H5 file
-    Args:
-        name (str): The dataset name
-        group (obj): The h5py handle to the group with the dataset 
-        new_data (array): The new data to append to the dataset
-        chunksize (tuple): H5 chunksize (default (14200,))
-        shot_axis: The array axis corresponding to number of shots
-        skip_if_existing: Do not append if the dataset alreadyt exists
+    
+    Parameters
+    ----------
+    name: str
+        The dataset name
+    group: obj 
+        The h5py handle to the group with the dataset 
+    new_data: array
+        The new data to append to the dataset
+    chunksize: tuple
+        H5 chunksize (default (14200,))
+    shot_axis: int
+        The array axis corresponding to number of shots
+    skip_if_existing: bool
+        Do not append if the dataset alreadyt exists
     """
     if name not in group:
         if new_data.ndim == 2:
@@ -65,10 +73,15 @@ def append_to_h5_dataset(name, group, new_data, chunksize=(14200,), shot_axis=0,
 def write_dict_to_h5(group, name, data):
     """
     Write a dictionary to a GEDI H5 file
-    Args:
-        name (str): The dataset name
-        group (obj): The h5py handle to the group with the dataset 
-        new_data (array): The dictionary to write to the h5 file
+    
+    Parameters
+    ----------
+    name: str
+        The dataset name
+    group: obj
+        The h5py handle to the group with the dataset 
+    new_data: array-like
+        The dictionary to write to the h5 file
     """
     if name not in group:
         group.create_group(name)
@@ -104,6 +117,15 @@ class LidarFile:
 
 
 class GEDIH5File(LidarFile):
+    """
+    Generic object for I/O of Gedi .h5 data
+    
+    Parameters
+    ----------
+    filename: str
+        Pathname to GEDI .h5 file
+    
+    """
     def __init__(self, filename):
         self.filename = filename
         self.filename_pattern = re.compile(r'GEDI0(1|2)_(A|B)_(\d{13})_O(\d{5})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})\.h5')
@@ -148,6 +170,25 @@ class GEDIH5File(LidarFile):
         self.beams = None
 
     def read_shots(self, beam, start=0, finish=None, dataset_list=[]):
+        """
+        Read data of GEDI .h5 files into numpy.ndarray
+        
+        Parameters
+        ----------
+        beam: str
+            Name of beam assessed, i.e. 'BEAM0001'
+        start: int
+            start of np.ndarray like slicing, Default=0
+        finish: int/ None
+            end of np.ndarray like slicing,Default=None
+        dataset_list: list of str
+            List of GEDI h5 keys or subgroups to read
+        
+        Returns
+        -------
+        data: numpy.ndarray
+            numpy.ndarray of read data
+        """
         if not finish:
             finish = self.fid[beam]['shot_number'].shape[0]
 
@@ -232,7 +273,34 @@ class GEDIH5File(LidarFile):
         else:
             return out_waveforms
 
-    def read_pgap_theta_z(self, beam, start=0, finish=None, minlength=None, height=False, start_offset=0):
+    def read_pgap_theta_z(self, beam, start=0, finish=None, minlength=None,
+                          height=False, start_offset=0):
+        """
+        Remap the 1D pgap_theta_z array to a 2D M x N array, where M is
+        the number Pgap profiles bins and N is the number of GEDI shots
+        
+        Parameters
+        ----------
+        beam: str
+            Name of beam assessed, i.e. 'BEAM0001'
+        start: int
+            start of np.ndarray like slicing, Default=0
+        finish: int/ None
+            end of np.ndarray like slicing, Default=None
+        minlength:
+            TBD, Default=None
+        height: bool
+            TBD
+        start_offset: str
+            TBD
+        
+        Returns
+        -------
+        out_pgap_profile: numpy.ndarray
+            TBD
+        out_height:
+            TBD
+        """
         if not finish:
             finish = self.fid[beam]['rx_sample_start_index'].shape[0]
 
@@ -251,7 +319,8 @@ class GEDIH5File(LidarFile):
         out_pgap_profile[0:start_offset,:] = 1.0        
 
         start_indices -= numpy.min(start_indices)
-        self.waveform_1d_to_2d(start_indices, counts, pgap_profile, out_pgap_profile, start_offset=start_offset)
+        self.waveform_1d_to_2d(start_indices, counts, pgap_profile,
+                               out_pgap_profile, start_offset=start_offset)
 
         if height:
             height_bin0 = self.fid[beam]['geolocation']['height_bin0'][start:finish]
@@ -332,7 +401,8 @@ class GEDIH5File(LidarFile):
 
         return outdata
 
-    def copy_shots(self, output_fid, beam, subset, output_2d, geom=False, dataset_list=[]):
+    def copy_shots(self, output_fid, beam, subset, output_2d, geom=False,
+                   dataset_list=[]):
         group = self.fid[beam]
         nshots = group['shot_number'].size
         product_id = self.get_product_id()
@@ -381,10 +451,14 @@ class GEDIH5File(LidarFile):
                         shot_axis = obj.shape.index(nshots)
                         if shot_axis == 0:
                             tmp = obj[idx_start:idx_finish,...]
-                            append_to_h5_dataset(name, out_group, tmp[idx_subset,...], chunksize=obj.chunks, shot_axis=shot_axis)
+                            append_to_h5_dataset(name, out_group,
+                                                 tmp[idx_subset,...],
+                                                 chunksize=obj.chunks,
+                                                 shot_axis=shot_axis)
                         else:
                             tmp = obj[...,idx_start:idx_finish]
-                            append_to_h5_dataset(name, out_group, tmp[...,idx_subset], chunksize=obj.chunks, shot_axis=shot_axis)
+                            append_to_h5_dataset(name, out_group, tmp[...,idx_subset],
+                                                 chunksize=obj.chunks, shot_axis=shot_axis)
                     else:
                         # ancillary / short_term datasets
                         append_to_h5_dataset(name, out_group, obj, chunksize=obj.chunks)
@@ -398,14 +472,21 @@ class GEDIH5File(LidarFile):
         # Copy waveforms
         if product_id in ('1A','1B'):
             if len(dataset_list) == 0 or 'txwaveform' in dataset_list:
-                self._copy_waveforms(group, 'txwaveform', out_group, 'tx', idx_start, idx_finish, idx_subset, output_2d)
+                self._copy_waveforms(group, 'txwaveform', out_group,
+                                     'tx', idx_start, idx_finish,
+                                     idx_subset, output_2d)
             if len(dataset_list) == 0 or 'rxwaveform' in dataset_list:
-                self._copy_waveforms(group, 'rxwaveform', out_group, 'rx', idx_start, idx_finish, idx_subset, output_2d)
+                self._copy_waveforms(group, 'rxwaveform', out_group,
+                                     'rx', idx_start, idx_finish,
+                                     idx_subset, output_2d)
         elif product_id == '2B':
             if len(dataset_list) == 0 or 'pgap_theta_z' in dataset_list:
-                self._copy_waveforms(group, 'pgap_theta_z', out_group, 'rx', idx_start, idx_finish, idx_subset, output_2d)
+                self._copy_waveforms(group, 'pgap_theta_z', out_group,
+                                     'rx', idx_start, idx_finish,
+                                     idx_subset, output_2d)
 
-    def _copy_waveforms(self, in_group, waveform_name, out_group, prefix, idx_start, idx_finish, idx_subset, output_2d):
+    def _copy_waveforms(self, in_group, waveform_name, out_group,
+                        prefix, idx_start, idx_finish, idx_subset, output_2d):
         start_indices_name = '{}_sample_start_index'.format(prefix)
         counts_name = '{}_sample_count'.format(prefix)
 
@@ -429,7 +510,8 @@ class GEDIH5File(LidarFile):
                 out_waveforms[0:counts[i], i] = waveforms[start_indices[i]:start_indices[i] + counts[i]]
 
             # Write waveforms to disk
-            append_to_h5_dataset(waveform_name, out_group, out_waveforms, chunksize=(128,128), shot_axis=1)
+            append_to_h5_dataset(waveform_name, out_group, out_waveforms,
+                                 chunksize=(128,128), shot_axis=1)
         else:
             # Get output waveform start indices
             out_start_indices = numpy.cumsum(counts)
@@ -455,7 +537,8 @@ class GEDIH5File(LidarFile):
                 out_start_indices += 1
 
             # Write waveforms to disk
-            append_to_h5_dataset(waveform_name, out_group, out_waveforms, chunksize=waveforms.chunks)
+            append_to_h5_dataset(waveform_name, out_group, out_waveforms,
+                                 chunksize=waveforms.chunks)
             append_to_h5_dataset(start_indices_name, out_group, out_start_indices)
             append_to_h5_dataset(counts_name, out_group, counts)
 
