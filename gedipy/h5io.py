@@ -288,14 +288,18 @@ class GEDIH5File(LidarFile):
         finish: int/ None
             end of np.ndarray like slicing, Default=None
         minlength:
-        
+            TBD, Default=None
         height: bool
+            TBD
         start_offset: str
+            TBD
         
         Returns
         -------
         out_pgap_profile: numpy.ndarray
+            TBD
         out_height:
+            TBD
         """
         if not finish:
             finish = self.fid[beam]['rx_sample_start_index'].shape[0]
