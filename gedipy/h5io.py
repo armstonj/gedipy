@@ -24,7 +24,8 @@ from . import GEDIPY_REFERENCE_COORDS
 from . import GEDIPY_REFERENCE_DATASETS
 
 
-def append_to_h5_dataset(name, group, new_data, chunksize=(14200,), shot_axis=0, skip_if_existing=False):
+def append_to_h5_dataset(name, group, new_data, chunksize=(14200,),
+                         shot_axis=0, skip_if_existing=False):
     """
     Write/append a dataset to a H5 file
     
@@ -163,7 +164,7 @@ class GEDIH5File(LidarFile):
         gedi_product_names = ('GEDI_L1A','GEDI_L1B','GEDI_L2A','GEDI_L2B','GEDI_L4A')
         if self.fid.attrs['short_name'] not in gedi_product_names:
             raise GEDIPyDriverError
-        self.beams = [beam for beam in self.fid.keys() if beam.startswith('BEAM')]
+        self.beams = [beam for beam in self.fid if beam.startswith('BEAM')]
 
     def close(self):
         self.fid.close()
@@ -261,8 +262,8 @@ class GEDIH5File(LidarFile):
         self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
         
         if elevation:
-            elev_bin0 = self.fid[beam]['geolocation']['elevation_bin0'][start:finish]
-            elev_lastbin = self.fid[beam]['geolocation']['elevation_lastbin'][start:finish]
+            elev_bin0 = self.fid[beam]['geolocation/elevation_bin0'][start:finish]
+            elev_lastbin = self.fid[beam]['geolocation/elevation_lastbin'][start:finish]
             v = (elev_bin0 - elev_lastbin) / (counts - 1)
             
             bin_dist = numpy.expands_dims(numpy.arange(max_count), axis=1)
@@ -323,8 +324,8 @@ class GEDIH5File(LidarFile):
                                out_pgap_profile, start_offset=start_offset)
 
         if height:
-            height_bin0 = self.fid[beam]['geolocation']['height_bin0'][start:finish]
-            height_lastbin = self.fid[beam]['geolocation']['height_lastbin'][start:finish]
+            height_bin0 = self.fid[beam]['geolocation/height_bin0'][start:finish]
+            height_lastbin = self.fid[beam]['geolocation/height_lastbin'][start:finish]
             v = (height_bin0 - height_lastbin) / (counts - 1)
 
             bin_dist = numpy.expand_dims(numpy.arange(max_count), axis=1)
@@ -647,19 +648,19 @@ class ATL03H5File(LidarFile):
         self.fid = h5py.File(self.filename, 'r')
         if self.fid.attrs['short_name'] != b'ATL03':
             raise GEDIPyDriverError
-        self.beams = [beam for beam in self.fid.keys() if beam.startswith('gt')]
+        self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
     def close(self):
         self.fid.close()
         self.beams = None
 
     def get_orbit(self):
-        orbit = self.fid['ancillary_data']['start_orbit'][0]
+        orbit = self.fid['ancillary_data/start_orbit'][0]
         return int(orbit)
 
     def get_atlas_orientation(self):
         flags = {0: 'backward', 1: 'forward', 2: 'transition'}
-        sc_orient = self.fid['orbit_info']['sc_orient'][0] 
+        sc_orient = self.fid['orbit_info/sc_orient'][0] 
         return flags[sc_orient]
 
     def get_orbit_number(self):
@@ -670,7 +671,7 @@ class ATL03H5File(LidarFile):
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
     def get_quality_flag(self, beam, **kwargs):
-        quality_flag = self.fid[beam]['heights']['signal_conf_ph'][:,0]
+        quality_flag = self.fid[beam]['heights/signal_conf_ph'][:,0]
         if 'dataset' in kwargs:
             if numpy.issubdtype(kwargs['dataset'].dtype, numpy.integer):
                 quality_flag &= (kwargs['dataset'] < numpy.iinfo(kwargs['dataset'].dtype).max)
@@ -679,8 +680,8 @@ class ATL03H5File(LidarFile):
         return quality_flag
 
     def get_coordinates(self, beam, ht=False):
-        longitude = self.fid[beam]['heights']['lon_ph'][()]
-        latitude = self.fid[beam]['heights']['lat_ph'][()]
+        longitude = self.fid[beam]['heights/lon_ph'][()]
+        latitude = self.fid[beam]['heights/lat_ph'][()]
         if ht:
             elevation = self.fid[beam]['heights']['h_ph'][()]
             return longitude, latitude, elevation
@@ -688,12 +689,12 @@ class ATL03H5File(LidarFile):
             return longitude, latitude
 
     def get_nrecords(self, beam):
-        nrecords = self.fid[beam]['heights']['delta_time'].shape[0]
+        nrecords = self.fid[beam]['heights/delta_time'].shape[0]
         return nrecords
 
     def get_photon_labels(self, beam, atl08_fid):
-        ph_index_beg = self.fid[beam]['geolocation']['ph_index_beg'][()]
-        segment_id = self.fid[beam]['geolocation']['segment_id'][()] 
+        ph_index_beg = self.fid[beam]['geolocation/ph_index_beg'][()]
+        segment_id = self.fid[beam]['geolocation/segment_id'][()] 
         valid_idx = ph_index_beg > 0
         
         idx = numpy.searchsorted(segment_id[valid_idx], atl08_fid.get_photon_segment_id(beam), side='left')
@@ -782,14 +783,14 @@ class ATL08H5File(LidarFile):
         self.fid = h5py.File(self.filename, 'r')
         if self.fid.attrs['short_name'] != b'ATL08':
             raise GEDIPyDriverError
-        self.beams = [beam for beam in self.fid.keys() if beam.startswith('gt')]
+        self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
     def close(self):
         self.fid.close()
         self.beams = None
 
     def get_orbit(self):
-        orbit = self.fid['ancillary_data']['start_orbit'][0]
+        orbit = self.fid['ancillary_data/start_orbit'][0]
         return int(orbit)
 
     def get_orbit_number(self):
@@ -800,30 +801,30 @@ class ATL08H5File(LidarFile):
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_photon_class(self, beam):
-        photon_class = self.fid[beam]['signal_photons']['classed_pc_flag'][()]
+        photon_class = self.fid[beam]['signal_photons/classed_pc_flag'][()]
         return photon_class
 
     def get_photon_index(self, beam):
-        photon_index = self.fid[beam]['signal_photons']['classed_pc_indx'][()] - 1
+        photon_index = self.fid[beam]['signal_photons/classed_pc_indx'][()] - 1
         return photon_index
 
     def get_photon_segment_id(self, beam):
-        segment_id = self.fid[beam]['signal_photons']['ph_segment_id'][()]
+        segment_id = self.fid[beam]['signal_photons/ph_segment_id'][()]
         return segment_id
 
     def get_coordinates(self, beam):
-        longitude = self.fid[beam]['land_segments']['longitude'][()]
-        latitude = self.fid[beam]['land_segments']['latitude'][()]
+        longitude = self.fid[beam]['land_segments/longitude'][()]
+        latitude = self.fid[beam]['land_segments/latitude'][()]
         return longitude, latitude
 
     def get_quality_flag(self, beam, **kwargs):
-        quality_flag = (self.fid[beam]['land_segments']['msw_flag'][()] == 1)
-        quality_flag &= (self.fid[beam]['land_segments']['night_flag'][()] == 1)
-        quality_flag &= (self.fid[beam]['land_segments']['terrain_flg'][()] == 0)
-        quality_flag &= (self.fid[beam]['land_segments']['segment_watermask'][()] == 0)
-        quality_flag &= (self.fid[beam]['land_segments']['layer_flag'][()] == 0)
-        quality_flag &= (self.fid[beam]['land_segments']['dem_removal_flag'][()] == 0)
-        quality_flag &= (self.fid[beam]['land_segments']['ph_removal_flag'][()] == 0)
+        quality_flag = (self.fid[beam]['land_segments/msw_flag'][()] == 1)
+        quality_flag &= (self.fid[beam]['land_segments/night_flag'][()] == 1)
+        quality_flag &= (self.fid[beam]['land_segments/terrain_flg'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments/segment_watermask'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments/layer_flag'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments/dem_removal_flag'][()] == 0)
+        quality_flag &= (self.fid[beam]['land_segments/ph_removal_flag'][()] == 0)
         if 'dataset' in kwargs:
             if numpy.issubdtype(kwargs['dataset'].dtype, numpy.integer):
                 quality_flag &= (kwargs['dataset'] < numpy.iinfo(kwargs['dataset'].dtype).max)
