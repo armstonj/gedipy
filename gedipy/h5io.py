@@ -294,8 +294,10 @@ class GEDIH5File(LidarFile):
             2D numpy.ndarray of read height above ground data
         """
         if not finish:
-            finish = self.fid[beam+'/rx_sample_start_index'].shape[0]
-
+            finish = len(self.fid[beam+'/rx_sample_start_index'])
+        else:
+            pass
+        
         start_indices = self.fid[beam+'/rx_sample_start_index'][start:finish] - 1
         counts = self.fid[beam+'/rx_sample_count'][start:finish]
         pgap_profile = self.fid[beam+'/pgap_theta_z'][start_indices[0]:(start_indices[-1]+counts[-1])]
