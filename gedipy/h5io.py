@@ -210,6 +210,7 @@ class GEDIH5File(LidarFile):
         for i in prange(start_indices.shape[0]):
             for j in prange(counts[i]):
                 out_data[j+start_offset, i] = data[start_indices[i] + j]
+        return out_data
 
     def read_tx_waveform(self, beam, start=0, finish=None, minlength=None):
         if not finish:
@@ -226,7 +227,11 @@ class GEDIH5File(LidarFile):
 
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
+<<<<<<< HEAD
         self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+=======
+        out_waveforms = self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+>>>>>>> [ENH] add return to `waveform_1d_to_2d()`
 
         return out_waveforms
 
@@ -245,8 +250,13 @@ class GEDIH5File(LidarFile):
 
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
+<<<<<<< HEAD
         self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
 
+=======
+        out_waveforms = self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+        
+>>>>>>> [ENH] add return to `waveform_1d_to_2d()`
         if elevation:
             elev_bin0 = self.fid[beam+'/geolocation/elevation_bin0'][start:finish]
             elev_lastbin = self.fid[beam+'/geolocation/elevation_lastbin'][start:finish]
@@ -313,7 +323,11 @@ class GEDIH5File(LidarFile):
         out_pgap_profile[0:start_offset,:] = 1.0
 
         start_indices -= numpy.min(start_indices)
+<<<<<<< HEAD
         self._waveform_1d_to_2d(start_indices, counts, pgap_profile,
+=======
+        out_pgap_profile = self.waveform_1d_to_2d(start_indices, counts, pgap_profile,
+>>>>>>> [ENH] add return to `waveform_1d_to_2d()`
                                out_pgap_profile, start_offset=start_offset)
 
         if height:
