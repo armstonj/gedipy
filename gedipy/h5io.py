@@ -166,8 +166,8 @@ class GEDIH5File(LidarFile):
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('BEAM')]
 
-    def close(self):
-        self.fid.close()
+    def close_h5(self):
+        self.fid.close_h5()
         self.beams = None
 
     def read_shots(self, beam, start=0, finish=None, dataset_list=[]):
@@ -650,8 +650,8 @@ class ATL03H5File(LidarFile):
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
-    def close(self):
-        self.fid.close()
+    def close_h5(self):
+        self.fid.close_h5()
         self.beams = None
 
     def get_orbit(self):
@@ -785,8 +785,8 @@ class ATL08H5File(LidarFile):
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
-    def close(self):
-        self.fid.close()
+    def close_h5(self):
+        self.fid.close_h5()
         self.beams = None
 
     def get_orbit(self):
