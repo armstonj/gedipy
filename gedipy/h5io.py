@@ -159,7 +159,7 @@ class GEDIH5File(LidarFile):
         nshots = self.fid[beam]['shot_number'].shape[0]
         return nshots
 
-    def open(self):
+    def open_h5(self):
         self.fid = h5py.File(self.filename, 'r')
         gedi_product_names = ('GEDI_L1A','GEDI_L1B','GEDI_L2A','GEDI_L2B','GEDI_L4A')
         if self.fid.attrs['short_name'] not in gedi_product_names:
@@ -644,7 +644,7 @@ class ATL03H5File(LidarFile):
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
-    def open(self):
+    def open_h5(self):
         self.fid = h5py.File(self.filename, 'r')
         if self.fid.attrs['short_name'] != b'ATL03':
             raise GEDIPyDriverError
@@ -779,7 +779,7 @@ class ATL08H5File(LidarFile):
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
-    def open(self):
+    def open_h5(self):
         self.fid = h5py.File(self.filename, 'r')
         if self.fid.attrs['short_name'] != b'ATL08':
             raise GEDIPyDriverError
