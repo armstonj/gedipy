@@ -8,6 +8,7 @@ import numpy
 import pandas
 import geopandas
 import argparse
+import os
 
 from gedipy import gedidb
 from gedipy import userfunctions
