@@ -24,63 +24,52 @@ from . import GEDIPY_REFERENCE_COORDS
 from . import GEDIPY_REFERENCE_DATASETS
 
 
-def append_to_h5_dataset(name, group, new_data, chunksize=(14200,),
-                         shot_axis=0, skip_if_existing=False):
+def append_to_h5_dataset(name, group, new_data, shot_axis=0,
+    skip_if_existing=False):
     """
     Write/append a dataset to a H5 file
-    
-    Parameters
-    ----------
-    name: str
-        The dataset name
-    group: obj 
-        The h5py handle to the group with the dataset 
-    new_data: array
-        The new data to append to the dataset
-    chunksize: tuple
-        H5 chunksize (default (14200,))
-    shot_axis: int
-        The array axis corresponding to number of shots
-    skip_if_existing: bool
-        Do not append if the dataset alreadyt exists
-    """
-    if name not in group:
-        if new_data.ndim == 2:
-            chunksize = (128,128)
-        else:
-            if not chunksize:
-                chunksize=(14200,)
-            chunksize = (new_data.shape[0],) * (new_data.ndim - 1) + chunksize
-        maxshape = (None,) * new_data.ndim
-        group.create_dataset(name, data=new_data, maxshape=maxshape,
-                chunks=chunksize, compression='gzip', compression_opts=4)
-    elif not skip_if_existing:
-        oldsize = group[name].shape[shot_axis]
-        newsize = oldsize + new_data.shape[shot_axis]
-        group[name].resize(newsize, axis=shot_axis)
-        if shot_axis == 0:
-            if len(group[name].shape) == 1:
-                group[name][oldsize:] = new_data
-            elif len(group[name].shape) == 2:
-                group[name][oldsize:,:] = new_data
-            else:
-                raise Exception('invalid number of dimensions ({})'.format(len(group[name].shape)))
-        elif shot_axis == 1:
-            group[name][:,oldsize:] = new_data
-        else:
-            raise Exception('invalid shot_axis ({})'.format(shot_axis))
 
-
-def write_dict_to_h5(group, name, data):
-    """
-    Write a dictionary to a GEDI H5 file
-    
     Parameters
     ----------
     name: str
         The dataset name
     group: obj
-        The h5py handle to the group with the dataset 
+        The h5py handle to the group with the dataset
+    new_data: array
+        The new data to append to the dataset
+    shot_axis: int
+        The array axis corresponding to number of shots
+    skip_if_existing: bool
+        Do not append if the dataset already exists
+    """
+    if name not in group:
+        if new_data.ndim == 2:
+            chunksize = (128,128)
+        else:
+            chunksize = True
+        maxshape = (None,) * new_data.ndim
+        group.create_dataset(name, data=new_data, maxshape=maxshape,
+                chunks=chunksize, compression='lzf')
+    elif not skip_if_existing:
+        oldsize = group[name].shape[shot_axis]
+        newsize = oldsize + new_data.shape[shot_axis]
+        group[name].resize(newsize, axis=shot_axis)
+        if shot_axis == 0:
+            group[name][oldsize:,...] = new_data
+        else:
+            group[name][...,oldsize:] = new_data
+
+
+def write_dict_to_h5(group, name, data):
+    """
+    Write a dictionary to a GEDI H5 file
+
+    Parameters
+    ----------
+    name: str
+        The dataset name
+    group: obj
+        The h5py handle to the group with the dataset
     new_data: array-like
         The dictionary to write to the h5 file
     """
@@ -113,26 +102,27 @@ class GEDIPyDriverError(Error):
 
 
 class LidarFile:
+    """Parent class for lidar file drivers"""
     def __init__(self, filename):
         self.filename = filename
 
 
 class GEDIH5File(LidarFile):
     """
-    Generic object for I/O of Gedi .h5 data
-    
+    Generic object for I/O of GEDI .h5 data
+
     Parameters
     ----------
     filename: str
         Pathname to GEDI .h5 file
-    
+
     """
     def __init__(self, filename):
         self.filename = filename
-        self.filename_pattern = re.compile(r'GEDI0(1|2)_(A|B)_(\d{13})_O(\d{5})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})\.h5')
+        self.filename_pattern = re.compile(r'GEDI0(1|2|4)_(A|B)_(\d{13})_O(\d{5})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})\.h5')
 
     def is_valid(self):
-        return self.is_valid_filename() and h5py.is_hdf5(self.filename)
+        return h5py.is_hdf5(self.filename)
 
     def is_valid_filename(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
@@ -167,13 +157,13 @@ class GEDIH5File(LidarFile):
         self.beams = [beam for beam in self.fid if beam.startswith('BEAM')]
 
     def close_h5(self):
-        self.fid.close_h5()
+        self.fid.close()
         self.beams = None
 
     def read_shots(self, beam, start=0, finish=None, dataset_list=[]):
         """
         Read data of GEDI .h5 files into numpy.ndarray
-        
+
         Parameters
         ----------
         beam: str
@@ -181,10 +171,10 @@ class GEDIH5File(LidarFile):
         start: int
             start of np.ndarray like slicing, Default=0
         finish: int/ None
-            end of np.ndarray like slicing,Default=None
+            end of np.ndarray like slicing, Default=None
         dataset_list: list of str
-            List of GEDI h5 keys or subgroups to read
-        
+            List of GEDI h5 dataset paths
+
         Returns
         -------
         data: numpy.ndarray
@@ -196,23 +186,19 @@ class GEDIH5File(LidarFile):
         dtype_list = []
         for name in dataset_list:
             if isinstance(self.fid[beam][name], h5py.Dataset):
-                n = os.path.basename(name)
                 s = self.fid[beam][name].dtype.str
                 if self.fid[beam][name].ndim > 1:
-                    if self.get_product_id() == '2A':
-                        t = self.fid[beam][name].shape[1:]
-                    else:
-                        t = self.fid[beam][name].shape[0:-1]
-                    dtype_list.append((str(n), s, t))
+                    t = self.fid[beam][name].shape[1:]
+                    dtype_list.append((str(name), s, t))
                 else:
-                    dtype_list.append((str(n), s))
+                    dtype_list.append((str(name), s))
 
         num_records = finish - start
         data = numpy.empty(num_records, dtype=dtype_list)
-        for i,name in enumerate(dataset_list):
-            n = dtype_list[i][0]
+        for item in dtype_list:
+            name = item[0]
             if isinstance(self.fid[beam][name], h5py.Dataset):
-                data[n] = self.fid[beam][name][start:finish]
+                data[name] = self.fid[beam][name][start:finish]
             else:
                 print('{} not found'.format(name))
 
@@ -220,7 +206,7 @@ class GEDIH5File(LidarFile):
 
     @staticmethod
     @jit(nopython=True, parallel=True)
-    def waveform_1d_to_2d(start_indices, counts, data, out_data, start_offset=0):
+    def _waveform_1d_to_2d(start_indices, counts, data, out_data, start_offset=0):
         for i in prange(start_indices.shape[0]):
             for j in prange(counts[i]):
                 out_data[j+start_offset, i] = data[start_indices[i] + j]
@@ -240,7 +226,7 @@ class GEDIH5File(LidarFile):
 
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
-        self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+        self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
 
         return out_waveforms
 
@@ -256,20 +242,20 @@ class GEDIH5File(LidarFile):
         if minlength:
             max_count = max(minlength, max_count)
         out_shape = (max_count, counts.shape[0])
-        
+
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
         self.waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
-        
+
         if elevation:
             elev_bin0 = self.fid[beam+'/geolocation/elevation_bin0'][start:finish]
             elev_lastbin = self.fid[beam+'/geolocation/elevation_lastbin'][start:finish]
             v = (elev_bin0 - elev_lastbin) / (counts - 1)
-            
+
             bin_dist = numpy.expands_dims(numpy.arange(max_count), axis=1)
-            out_elevation = (numpy.expands_dims(elev_bin0, axis=0) - 
+            out_elevation = (numpy.expands_dims(elev_bin0, axis=0) -
                 numpy.repeat(bin_dist,v.shape[0],axis=1) * v)
-            
+
             return out_waveforms, out_elevation
         else:
             return out_waveforms
@@ -279,7 +265,7 @@ class GEDIH5File(LidarFile):
         """
         Remap the 1D pgap_theta_z array to a 2D M x N array, where M is
         the number Pgap profiles bins and N is the number of GEDI shots
-        
+
         Parameters
         ----------
         beam: str
@@ -288,19 +274,24 @@ class GEDIH5File(LidarFile):
             start of np.ndarray like slicing, Default=0
         finish: int/ None
             end of np.ndarray like slicing, Default=None
-        minlength:
-            TBD, Default=None
+        minlength int:
+            Minimum value for M
+            Default is the maximum pgap_theta_z array length
         height: bool
-            TBD
-        start_offset: str
-            TBD
-        
+            Return the M x N array the same size of out_pgap_profile
+            with the height above ground of each profile bin
+            Default is False
+        start_offset: int
+            Offset the start each profile in out_pgap_profile by
+            start_offset bins. These bins are filled with ones.
+            Default = 0
+
         Returns
         -------
         out_pgap_profile: numpy.ndarray
-            TBD
+            2D numpy.ndarray of read pgap_theta_z data
         out_height:
-            TBD
+            2D numpy.ndarray of read height above ground data
         """
         if not finish:
             finish = self.fid[beam+'/rx_sample_start_index'].shape[0]
@@ -317,10 +308,10 @@ class GEDIH5File(LidarFile):
         out_pgap_profile = numpy.ones(out_shape, dtype=pgap_profile.dtype)
         pgap = self.fid[beam+'/pgap_theta'][start:finish]
         out_pgap_profile *= numpy.expand_dims(pgap, axis=0)
-        out_pgap_profile[0:start_offset,:] = 1.0        
+        out_pgap_profile[0:start_offset,:] = 1.0
 
         start_indices -= numpy.min(start_indices)
-        self.waveform_1d_to_2d(start_indices, counts, pgap_profile,
+        self._waveform_1d_to_2d(start_indices, counts, pgap_profile,
                                out_pgap_profile, start_offset=start_offset)
 
         if height:
@@ -329,8 +320,8 @@ class GEDIH5File(LidarFile):
             v = (height_bin0 - height_lastbin) / (counts - 1)
 
             bin_dist = numpy.expand_dims(numpy.arange(max_count), axis=1)
-            out_height = (numpy.expand_dims(height_bin0, axis=0) - 
-                numpy.repeat(bin_dist,v.shape[0],axis=1) * v + 
+            out_height = (numpy.expand_dims(height_bin0, axis=0) -
+                numpy.repeat(bin_dist,v.shape[0],axis=1) * v +
                 start_offset * v)
 
             return out_pgap_profile, out_height
@@ -350,7 +341,7 @@ class GEDIH5File(LidarFile):
         # Find indices to extract
         if subset:
             product_id = self.get_product_id()
-            idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
+            idx_extract = userfunctions.get_gedi_geom_indices(group, product_id, subset)
 
             # Use h5py simple indexing - faster
             if not numpy.any(idx_extract):
@@ -365,7 +356,7 @@ class GEDIH5File(LidarFile):
             idx_subset = None
 
         # Function to extract datasets for selected shots
-        def get_selected_shots(name, obj):
+        def _get_selected_shots(name, obj):
             if isinstance(obj, h5py.Dataset):
                 try:
                     shot_axis = obj.shape.index(nshots)
@@ -381,7 +372,7 @@ class GEDIH5File(LidarFile):
                     else:
                         print('{} is not a 1D or 2D dataset'.format(name))
                         raise
-                    if idx_subset:
+                    if idx_subset is not None:
                         df = pandas.DataFrame(data=arr[idx_subset,...], columns=colnames)
                     else:
                         df = pandas.DataFrame(data=arr, columns=colnames)
@@ -397,7 +388,7 @@ class GEDIH5File(LidarFile):
         datasets = []
         for name in dataset_list:
             out_name = os.path.basename(name)
-            get_selected_shots(out_name, group[name])
+            _get_selected_shots(out_name, group[name])
         outdata = pandas.concat(datasets, axis=1)
 
         return outdata
@@ -441,7 +432,7 @@ class GEDIH5File(LidarFile):
             'pgap_theta_z'
         )
 
-        def copy_selected_shots(name, obj):
+        def _copy_selected_shots(name, obj):
             if isinstance(obj, h5py.Group):
                 if name not in out_group:
                     out_group.create_group(name)
@@ -454,19 +445,18 @@ class GEDIH5File(LidarFile):
                             tmp = obj[idx_start:idx_finish,...]
                             append_to_h5_dataset(name, out_group,
                                                  tmp[idx_subset,...],
-                                                 chunksize=obj.chunks,
                                                  shot_axis=shot_axis)
                         else:
                             tmp = obj[...,idx_start:idx_finish]
                             append_to_h5_dataset(name, out_group, tmp[...,idx_subset],
-                                                 chunksize=obj.chunks, shot_axis=shot_axis)
+                                                 shot_axis=shot_axis)
                     else:
                         # ancillary / short_term datasets
-                        append_to_h5_dataset(name, out_group, obj, chunksize=obj.chunks)
+                        append_to_h5_dataset(name, out_group, obj)
 
         if len(dataset_list) > 0:
             for name in dataset_list:
-                copy_selected_shots(name, group[name])
+                _copy_selected_shots(name, group[name])
         else:
             group.visititems(copy_selected_shots)
 
@@ -511,8 +501,7 @@ class GEDIH5File(LidarFile):
                 out_waveforms[0:counts[i], i] = waveforms[start_indices[i]:start_indices[i] + counts[i]]
 
             # Write waveforms to disk
-            append_to_h5_dataset(waveform_name, out_group, out_waveforms,
-                                 chunksize=(128,128), shot_axis=1)
+            append_to_h5_dataset(waveform_name, out_group, out_waveforms, shot_axis=1)
         else:
             # Get output waveform start indices
             out_start_indices = numpy.cumsum(counts)
@@ -538,8 +527,7 @@ class GEDIH5File(LidarFile):
                 out_start_indices += 1
 
             # Write waveforms to disk
-            append_to_h5_dataset(waveform_name, out_group, out_waveforms,
-                                 chunksize=waveforms.chunks)
+            append_to_h5_dataset(waveform_name, out_group, out_waveforms)
             append_to_h5_dataset(start_indices_name, out_group, out_start_indices)
             append_to_h5_dataset(counts_name, out_group, counts)
 
@@ -565,7 +553,7 @@ class GEDIH5File(LidarFile):
         longitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[self.get_product_id()]['x']][()]
         latitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[self.get_product_id()]['y']][()]
         return longitude, latitude
-    
+
     def get_dataset(self, beam, name, index=None):
         if self.fid[beam][name].ndim > 1:
             if index:
@@ -581,6 +569,15 @@ class GEDIH5File(LidarFile):
 
 
 class ATL03H5File(LidarFile):
+    """
+    Generic object for I/O of ICESat-2 ATL03 .h5 data
+
+    Parameters
+    ----------
+    filename: str
+        Pathname to ATL03 .h5 file
+
+    """
     def __init__(self, filename):
         self.filename = filename
         self.filename_pattern = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
@@ -651,7 +648,7 @@ class ATL03H5File(LidarFile):
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
     def close_h5(self):
-        self.fid.close_h5()
+        self.fid.close()
         self.beams = None
 
     def get_orbit(self):
@@ -660,7 +657,7 @@ class ATL03H5File(LidarFile):
 
     def get_atlas_orientation(self):
         flags = {0: 'backward', 1: 'forward', 2: 'transition'}
-        sc_orient = self.fid['orbit_info/sc_orient'][0] 
+        sc_orient = self.fid['orbit_info/sc_orient'][0]
         return flags[sc_orient]
 
     def get_orbit_number(self):
@@ -672,11 +669,14 @@ class ATL03H5File(LidarFile):
 
     def get_quality_flag(self, beam, **kwargs):
         quality_flag = self.fid[beam+'/heights/signal_conf_ph'][:,0]
-        if 'dataset' in kwargs:
-            if numpy.issubdtype(kwargs['dataset'].dtype, numpy.integer):
-                quality_flag &= (kwargs['dataset'] < numpy.iinfo(kwargs['dataset'].dtype).max)
-            else:
-                quality_flag &= (kwargs['dataset'] < numpy.finfo(kwargs['dataset'].dtype).max)
+        if len(kwargs) > 0:
+            for k in kwargs:
+                dataset = self.fid[beam+'/'+k][()]
+                quality_flag &= (dataset == kwargs[k])
+                if numpy.issubdtype(dataset.dtype, numpy.integer):
+                    quality_flag &= (dataset < numpy.iinfo(kwargs['dataset'].dtype).max)
+                else:
+                    quality_flag &= (dataset < numpy.finfo(kwargs['dataset'].dtype).max)
         return quality_flag
 
     def get_coordinates(self, beam, ht=False):
@@ -694,17 +694,18 @@ class ATL03H5File(LidarFile):
 
     def get_photon_labels(self, beam, atl08_fid):
         ph_index_beg = self.fid[beam+'/geolocation/ph_index_beg'][()]
-        segment_id = self.fid[beam+'/geolocation/segment_id'][()] 
+        segment_id = self.fid[beam+'/geolocation/segment_id'][()]
         valid_idx = ph_index_beg > 0
-        
-        idx = numpy.searchsorted(segment_id[valid_idx], atl08_fid.get_photon_segment_id(beam), side='left')
+
+        idx = numpy.searchsorted(segment_id[valid_idx],
+            atl08_fid.get_photon_segment_id(beam), side='left')
         atl08_ph_index_beg = ph_index_beg[valid_idx][idx] - 1
-        
+
         atl08_ph_index = atl08_fid.get_photon_index(beam)
         idx = atl08_ph_index_beg + atl08_fid.get_photon_index(beam)
         atl03_class = numpy.zeros(self.get_nrecords(beam), dtype=numpy.uint8)
         atl03_class[idx] = atl08_fid.get_photon_class(beam)
-         
+
         return atl03_class
 
     def get_dataset(self, beam, name, index=None):
@@ -714,8 +715,77 @@ class ATL03H5File(LidarFile):
             dataset = self.fid[beam][name][()]
         return dataset
 
+    def export_shots(self, beam, subset, dataset_list=[]):
+        # Get the group information
+        group = self.fid[beam]
+        nshots = group['heights/delta_time'].shape[0]
+
+        # Find indices to extract
+        if subset:
+            product_id = self.get_product_id()
+            idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
+
+            # Use h5py simple indexing - faster
+            if not numpy.any(idx_extract):
+                return
+            tmp, = numpy.nonzero(idx_extract)
+            idx_start = numpy.min(tmp)
+            idx_finish = numpy.max(tmp) + 1
+            idx_subset = tmp - idx_start
+        else:
+            idx_start = 0
+            idx_finish = self.get_nrecords()
+            idx_subset = None
+
+        # Function to extract datasets for selected shots
+        def _get_selected_shots(name, obj):
+            if isinstance(obj, h5py.Dataset):
+                try:
+                    shot_axis = obj.shape.index(nshots)
+                    if obj.ndim == 1:
+                        arr = obj[idx_start:idx_finish]
+                        colnames = [name]
+                    elif obj.ndim == 2:
+                        if shot_axis == 0:
+                            arr = obj[idx_start:idx_finish,...]
+                        else:
+                            arr = numpy.transpose(obj[...,idx_start:idx_finish])
+                        colnames = ['{}_{:03d}'.format(name,i) for i in range(obj.shape[shot_axis-1])]
+                    else:
+                        print('{} is not a 1D or 2D dataset'.format(name))
+                        raise
+                    if idx_subset is not None:
+                        df = pandas.DataFrame(data=arr[idx_subset,...], columns=colnames)
+                    else:
+                        df = pandas.DataFrame(data=arr, columns=colnames)
+                    datasets.append(df)
+                except ValueError:
+                    print('{} is not a footprint level dataset'.format(name))
+                    raise
+                except:
+                    print("Unexpected error:", sys.exc_info()[0])
+                    raise
+
+        # Extract and combine the data for extracted shots
+        datasets = []
+        for name in dataset_list:
+            out_name = os.path.basename(name)
+            _get_selected_shots(out_name, group[name])
+        outdata = pandas.concat(datasets, axis=1)
+
+        return outdata
+
 
 class ATL08H5File(LidarFile):
+    """
+    Generic object for I/O of ICESat-2 ATL08 .h5 data
+
+    Parameters
+    ----------
+    filename: str
+        Pathname to ATL08 .h5 file
+
+    """
     def __init__(self, filename):
         self.filename = filename
         self.filename_pattern = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
@@ -786,7 +856,7 @@ class ATL08H5File(LidarFile):
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
     def close_h5(self):
-        self.fid.close_h5()
+        self.fid.close()
         self.beams = None
 
     def get_orbit(self):
@@ -817,19 +887,27 @@ class ATL08H5File(LidarFile):
         latitude = self.fid[beam+'/land_segments/latitude'][()]
         return longitude, latitude
 
+    def get_night_flag(self, beam):
+        night_flag = (self.fid[beam+'/land_segments/night_flag'][()] == 1)
+        return night_flag
+
     def get_quality_flag(self, beam, **kwargs):
-        quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 1)
-        quality_flag &= (self.fid[beam+'/land_segments/night_flag'][()] == 1)
+        quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/terrain_flg'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/segment_watermask'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/layer_flag'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/cloud_flag_asr'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/dem_removal_flag'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/ph_removal_flag'][()] == 0)
-        if 'dataset' in kwargs:
-            if numpy.issubdtype(kwargs['dataset'].dtype, numpy.integer):
-                quality_flag &= (kwargs['dataset'] < numpy.iinfo(kwargs['dataset'].dtype).max)
-            else:
-                quality_flag &= (kwargs['dataset'] < numpy.finfo(kwargs['dataset'].dtype).max)
+        quality_flag &= (self.fid[beam+'/land_segments/h_te_uncertainty'][()] <
+            numpy.finfo(kwargs['dataset'].dtype).max)
+        if len(kwargs) > 0:
+            for k in kwargs:
+                dataset = self.fid[beam+'/'+k][()]
+                quality_flag &= (dataset == kwargs[k])
+                if numpy.issubdtype(dataset.dtype, numpy.integer):
+                    quality_flag &= (dataset < numpy.iinfo(kwargs['dataset'].dtype).max)
+                else:
+                    quality_flag &= (dataset < numpy.finfo(kwargs['dataset'].dtype).max)
         return quality_flag
 
     def get_dataset(self, beam, name, index=None):
@@ -839,3 +917,62 @@ class ATL08H5File(LidarFile):
             dataset = self.fid[beam][name][()]
         return dataset
 
+    def export_shots(self, beam, subset, dataset_list=[]):
+        # Get the group information
+        group = self.fid[beam]
+        nshots = group['land_segments/delta_time'].shape[0]
+
+        # Find indices to extract
+        if subset:
+            product_id = self.get_product_id()
+            idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
+
+            # Use h5py simple indexing - faster
+            if not numpy.any(idx_extract):
+                return
+            tmp, = numpy.nonzero(idx_extract)
+            idx_start = numpy.min(tmp)
+            idx_finish = numpy.max(tmp) + 1
+            idx_subset = tmp - idx_start
+        else:
+            idx_start = 0
+            idx_finish = self.get_nrecords()
+            idx_subset = None
+
+        # Function to extract datasets for selected shots
+        def _get_selected_shots(name, obj):
+            if isinstance(obj, h5py.Dataset):
+                try:
+                    shot_axis = obj.shape.index(nshots)
+                    if obj.ndim == 1:
+                        arr = obj[idx_start:idx_finish]
+                        colnames = [name]
+                    elif obj.ndim == 2:
+                        if shot_axis == 0:
+                            arr = obj[idx_start:idx_finish,...]
+                        else:
+                            arr = numpy.transpose(obj[...,idx_start:idx_finish])
+                        colnames = ['{}_{:03d}'.format(name,i) for i in range(obj.shape[shot_axis-1])]
+                    else:
+                        print('{} is not a 1D or 2D dataset'.format(name))
+                        raise
+                    if idx_subset is not None:
+                        df = pandas.DataFrame(data=arr[idx_subset,...], columns=colnames)
+                    else:
+                        df = pandas.DataFrame(data=arr, columns=colnames)
+                    datasets.append(df)
+                except ValueError:
+                    print('{} is not a footprint level dataset'.format(name))
+                    raise
+                except:
+                    print("Unexpected error:", sys.exc_info()[0])
+                    raise
+
+        # Extract and combine the data for extracted shots
+        datasets = []
+        for name in dataset_list:
+            out_name = os.path.basename(name)
+            _get_selected_shots(out_name, group[name])
+        outdata = pandas.concat(datasets, axis=1)
+
+        return outdata
