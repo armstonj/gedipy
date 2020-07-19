@@ -25,6 +25,8 @@ if __name__ == '__main__':
     argparser.add_argument('-r', '--resolution', metavar='INT', type=int, default=1000,
         choices=[100,500,1000,3000,9000,18000,24000],
         help='Spatial resolution of output grid (m)')
+    argparser.add_argument('-i', '--index', metavar='INT', type=int, default=None,
+        help='Dateset index to grid for 2D datasets')
     argparser.add_argument('-g', '--gedi_domain', metavar='FLOAT', type=float, default=52,
         help='Latitudinal extent of the GEDI domain (degrees)')
     argparser.add_argument('-s', '--sensitivity', metavar='FLOAT', type=float, default=0.9,
@@ -61,8 +63,8 @@ if __name__ == '__main__':
             h5file.open_h5()
             for beam in h5file.beams:
                 longitude, latitude = h5file.get_coordinates(beam)
-                dataset = h5file.get_dataset(beam, args.dataset)
-                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity, dataset=dataset)
+                dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
+                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity)
                 gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], func=args.userfunc)
             h5file.close_h5()
 

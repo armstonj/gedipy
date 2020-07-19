@@ -30,8 +30,8 @@ class GEDIGrid:
     def __init__(self, filename, profile=GEDIPY_RIO_DEFAULT_PROFILE, gedi_domain=52):
         self.filename = filename
         self.profile = profile
-        self.inproj = pyproj.Proj('epsg:4326')
-        self.outproj = pyproj.Proj(str(profile['crs']))
+        self.inproj = pyproj.Proj(init='epsg:4326')
+        self.outproj = pyproj.Proj(init=str(profile['crs']))
         self.gedi_domain = gedi_domain
 
     def rowcol_to_wgs84(self, rows, cols, binsize):
@@ -84,19 +84,19 @@ class GEDIGrid:
         rows = numpy.arange(nrow, dtype=numpy.float32)
         cols = numpy.arange(ncol, dtype=numpy.float32)
         longrid, latgrid = self.rowcol_to_wgs84(rows, cols, binsize)
-        
+
         if bbox:
             xmask = (longrid < bbox[2]) & (longrid >= bbox[0])
             ncol = numpy.count_nonzero(xmask)
             ymask = (latgrid < bbox[1]) & (latgrid >= bbox[3])
             nrow = numpy.count_nonzero(ymask)
-            
+
             idx = numpy.ix_(xmask,ymask)
             xmin = GEDIPY_EASE2_PAR['xmin'] + numpy.min(idx[0]) * binsize
             ymax = GEDIPY_EASE2_PAR['ymax'] - numpy.min(idx[1]) * binsize
-            
+
             longrid = longrid[xmask]
-            latgrid = latgrid[ymask] 
+            latgrid = latgrid[ymask]
         else:
             xmin = GEDIPY_EASE2_PAR['xmin']
             ymax = GEDIPY_EASE2_PAR['ymax']
@@ -105,7 +105,7 @@ class GEDIGrid:
         idx = numpy.argwhere((latgrid > self.gedi_domain) | (latgrid < -self.gedi_domain))
         self.outgrid[:,idx,:] = self.profile['nodata']
 
-        self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2], 
+        self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2],
             transform=Affine(binsize, 0.0, xmin, 0.0, -binsize, ymax))
 
     def zoom_gedi_grid(self, resolution=1000):
@@ -114,13 +114,13 @@ class GEDIGrid:
         else:
             print('Only 500 m and 100 m resolutions accepted.')
             exit(1)
-        
+
         self.outgrid = ndimage.zoom(self.outgrid, res_factor, order=1, mode='nearest')
         binsize = GEDIPY_EASE2_PAR['binsize'] / res_factor
-        
+
         self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2],
-            transform=Affine(binsize, 0.0, self.profile[2], 0.0, -binsize, self.profile[5])) 
-    
+            transform=Affine(binsize, 0.0, self.profile[2], 0.0, -binsize, self.profile[5]))
+
     def write_grid(self, **kwargs):
         for key,value in kwargs.items():
             if key in self.profile:
@@ -135,6 +135,5 @@ class GEDIGrid:
         if numpy.any(valid):
             x,y = pyproj.transform(self.inproj, self.outproj, longitude[valid], latitude[valid])
             func_method = getattr(userfunctions, func)
-            func_method(x, y, dataset[valid], self.outgrid, 
+            func_method(x, y, dataset[valid], self.outgrid,
                 self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0])
-

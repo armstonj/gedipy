@@ -198,7 +198,7 @@ class GEDIH5File(LidarFile):
         for item in dtype_list:
             name = item[0]
             if isinstance(self.fid[beam][name], h5py.Dataset):
-                data[name] = self.fid[beam][name][start:finish]
+                data[name] = self.fid[beam][name][start:finish,...]
             else:
                 print('{} not found'.format(name))
 
@@ -557,10 +557,7 @@ class GEDIH5File(LidarFile):
     def get_dataset(self, beam, name, index=None):
         if self.fid[beam][name].ndim > 1:
             if index:
-                if self.get_product_id() == '2A':
-                    dataset = self.fid[beam][name][:,index]
-                else:
-                    dataset = self.fid[beam][name][index,:]
+                dataset = self.fid[beam][name][:,index]
             else:
                 dataset = self.fid[beam][name][()]
         else:
@@ -671,12 +668,14 @@ class ATL03H5File(LidarFile):
         quality_flag = self.fid[beam+'/heights/signal_conf_ph'][:,0]
         if len(kwargs) > 0:
             for k in kwargs:
-                dataset = self.fid[beam+'/'+k][()]
-                quality_flag &= (dataset == kwargs[k])
-                if numpy.issubdtype(dataset.dtype, numpy.integer):
-                    quality_flag &= (dataset < numpy.iinfo(kwargs['dataset'].dtype).max)
-                else:
-                    quality_flag &= (dataset < numpy.finfo(kwargs['dataset'].dtype).max)
+                name = '{}/{}'.format(beam,k)
+                if name in self.fid:
+                    dataset = self.fid[name][()]
+                    quality_flag &= (dataset == kwargs[k])
+                    if numpy.issubdtype(dataset.dtype, numpy.integer):
+                        quality_flag &= (dataset < numpy.iinfo(dataset.dtype).max)
+                    else:
+                        quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
         return quality_flag
 
     def get_coordinates(self, beam, ht=False):
@@ -710,7 +709,7 @@ class ATL03H5File(LidarFile):
 
     def get_dataset(self, beam, name, index=None):
         if index:
-            dataset = self.fid[beam][name][...,index]
+            dataset = self.fid[beam][name][:,index]
         else:
             dataset = self.fid[beam][name][()]
         return dataset
@@ -895,24 +894,26 @@ class ATL08H5File(LidarFile):
         quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/terrain_flg'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/segment_watermask'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/cloud_flag_asr'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/cloud_flag_atm'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/dem_removal_flag'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/ph_removal_flag'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/h_te_uncertainty'][()] <
-            numpy.finfo(kwargs['dataset'].dtype).max)
+        quality_flag &= (self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'][()] <
+            numpy.finfo(self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'].dtype).max)
         if len(kwargs) > 0:
             for k in kwargs:
-                dataset = self.fid[beam+'/'+k][()]
-                quality_flag &= (dataset == kwargs[k])
-                if numpy.issubdtype(dataset.dtype, numpy.integer):
-                    quality_flag &= (dataset < numpy.iinfo(kwargs['dataset'].dtype).max)
-                else:
-                    quality_flag &= (dataset < numpy.finfo(kwargs['dataset'].dtype).max)
+                name = '{}/{}'.format(beam,k)
+                if name in self.fid:
+                    dataset = self.fid[name][()]
+                    quality_flag &= (dataset == kwargs[k])
+                    if numpy.issubdtype(dataset.dtype, numpy.integer):
+                        quality_flag &= (dataset < numpy.iinfo(dataset.dtype).max)
+                    else:
+                        quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
         return quality_flag
 
     def get_dataset(self, beam, name, index=None):
         if index:
-            dataset = self.fid[beam][name][...,index]
+            dataset = self.fid[beam][name][:,index]
         else:
             dataset = self.fid[beam][name][()]
         return dataset
