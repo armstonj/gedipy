@@ -41,7 +41,7 @@ def get_geom_indices(beam_group, product_id, geomlist):
     xname = GEDIPY_REFERENCE_COORDS[product_id]['x']
     yname = GEDIPY_REFERENCE_COORDS[product_id]['y']
     shot_geoms = points(beam_group[xname][()], y=beam_group[yname][()])
-    idx_extract = numpy.zeros(beam_group['shot_number'].size, dtype=numpy.bool)
+    idx_extract = numpy.zeros(beam_group[xname].size, dtype=numpy.bool)
     for geom in geomlist:
         mask = contains(geom, shot_geoms)
         idx_extract = idx_extract | mask
@@ -67,7 +67,7 @@ def get_polygon_from_kml(kml_file):
     return result
 
 
-def get_dates_from_mission_weeks(start_mw, end_mw):
+def get_dates_from_gedi_mission_weeks(start_mw, end_mw):
     first_mw_date = datetime.datetime.strptime('2018-12-13', '%Y-%m-%d')
     start_mw_offset = (start_mw - 1) * 7
     start_mw_date = first_mw_date + datetime.timedelta(start_mw_offset)
@@ -134,7 +134,7 @@ def finalize_simple_stats(outgrid, profile, gain=10000, offset=0, dtype='uint16'
     numpy.divide(outgrid[1], outgrid[2], out=tmp, where=outgrid[2] > 1)
     numpy.sqrt(tmp, out=tmp, where=outgrid[2] > 1)
     numpy.multiply(tmp, gain, out=tmp, where=outgrid[2] > 1)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[2] > 1) 
+    numpy.add(tmp, offset, out=tmp, where=outgrid[2] > 1)
     outgrid[1] = tmp
 
     gedimask = outgrid[2,:,0]
@@ -194,8 +194,8 @@ def gauss_noise_thresholds(sig, res, probNoise=0.05, probMiss=0.1):
 
 
 @jit(nopython=True)
-def get_beam_sensitivity(noise_mean, noise_std_dev, rx_sample_count, rx_sample_sum, nNsig, nSsig,
-                         pSigma, fSigma=5.5):
+def get_beam_sensitivity(noise_mean, noise_std_dev, rx_sample_count, rx_sample_sum,
+    nNsig, nSsig, pSigma, fSigma=5.5):
     """
     Calculate the beam sensitivity metric
     """
@@ -214,4 +214,3 @@ def get_beam_sensitivity(noise_mean, noise_std_dev, rx_sample_count, rx_sample_s
         sensitivity = 0.0
 
     return sensitivity
-
