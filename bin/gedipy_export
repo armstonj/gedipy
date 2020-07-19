@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 DESCRIPTION='''
-Export subsets of GEDI L1 and L2 files to CSV, Shapefile, GeoJSON or GPKG
+Export subsets of lidar .h5 files to CSV, Shapefile, GeoJSON or GPKG
 '''
 
 import numpy
@@ -28,7 +28,7 @@ if __name__ == '__main__':
         help='KML file to define extent of subset')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
         help='Geographic coordinate bounding box [minx maxy maxx miny]')
-    argparser.add_argument('-o', '--out-format', default='CSV', metavar='STR', 
+    argparser.add_argument('-o', '--out-format', default='CSV', metavar='STR',
         type=str, choices=['CSV','ESRI Shapefile','GeoJSON','GPKG'],
         help='Output file format')
     args = argparser.parse_args()
@@ -57,22 +57,22 @@ if __name__ == '__main__':
     else:
         print('error: --dataset_list not specified.')
         exit(1)
-    
+
     # Loop through each h5 file and beam
     number_of_orbits = len(file_database.file_by_orbit)
     outdata_list = []
     product_id = None
     for i,orbit in enumerate(file_database.file_by_orbit):
-        print('Exporting {} ({}/{})'.format(h5file.filename, i+1, number_of_orbits), flush=True)
-        h5_file = file_database.get_file(orbit)
-        if h5_file is not None:
+        h5file = file_database.get_file(orbit)
+        if h5file is not None:
+            print('Exporting {} ({}/{})'.format(h5file.filename, i+1, number_of_orbits), flush=True)
             if not product_id:
-                product_id = h5_file.get_product_id()
-            h5file.open()
+                product_id = h5file.get_product_id()
+            h5file.open_h5()
             for beam in h5file.beams:
                 outdata = h5file.export_shots(beam, geom_list, dataset_list=dataset_list)
                 outdata_list.append(outdata)
-            h5file.close()
+            h5file.close_h5()
 
     # Concatenate the results
     if len(outdata_list) > 0:
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     # Output the data to file
     if args.out_format == 'CSV':
         outdata.to_csv(args.output_file, mode='w', header=True, index=False)
-    else: 
+    else:
         xname = os.path.basename(GEDIPY_REFERENCE_COORDS[product_id]['x'])
         yname = os.path.basename(GEDIPY_REFERENCE_COORDS[product_id]['y'])
         if xname in outdata.columns and yname in outdata.columns:
@@ -92,6 +92,5 @@ if __name__ == '__main__':
         else:
             print('error: geometry columns needed for {} not specified in --dataset_list.')
             exit(1)
-        gdf = geopandas.GeoDataFrame(outdata, geometry=shot_geom)      
+        gdf = geopandas.GeoDataFrame(outdata, geometry=shot_geom)
         gdf.to_file(args.output_file, driver=args.out_format)
-
