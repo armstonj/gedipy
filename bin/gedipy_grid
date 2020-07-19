@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 DESCRIPTION='''
-Grid GEDI L1 and L2 files on the official EASE 2.0 grid
+Grid lidar h5 files on the official GEDI EASE 2.0 grid
 '''
 
 import numpy
@@ -22,7 +22,7 @@ if __name__ == '__main__':
         help='H5 dataset name to grid')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
         help='File containing paths to the H5 files (one per line)')
-    argparser.add_argument('-r', '--resolution', metavar='INT', type=int, default=1000, 
+    argparser.add_argument('-r', '--resolution', metavar='INT', type=int, default=1000,
         choices=[100,500,1000,3000,9000,18000,24000],
         help='Spatial resolution of output grid (m)')
     argparser.add_argument('-g', '--gedi_domain', metavar='FLOAT', type=float, default=52,
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
         help='Geographic coordinate bounding box to clip the grid to [minx maxy maxx miny]')
     argparser.add_argument('-u','--userfunc', metavar='STR', type=str, default='simple_stats',
-        help='Running grid statistics to compute')    
+        help='Running grid statistics to compute')
     args = argparser.parse_args()
 
     # Load file database
@@ -44,7 +44,7 @@ if __name__ == '__main__':
         exit(1)
 
     # Setup the GEDI grid
-    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE, 
+    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE,
         gedi_domain=args.gedi_domain)
     if args.resolution >= 1000:
         gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution)
@@ -58,17 +58,16 @@ if __name__ == '__main__':
         h5file = file_database.get_file(orbit)
         if h5file:
             print('Gridding {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
-            h5file.open()
+            h5file.open_h5()
             for beam in h5file.beams:
                 longitude, latitude = h5file.get_coordinates(beam)
                 dataset = h5file.get_dataset(beam, args.dataset)
                 quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity, dataset=dataset)
                 gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], func=args.userfunc)
-            h5file.close()
+            h5file.close_h5()
 
     # Finalize and write the result
     if args.userfunc == 'simple_stats':
-        gedi_grid.outgrid = userfunctions.finalize_simple_stats(gedi_grid.outgrid, 
+        gedi_grid.outgrid = userfunctions.finalize_simple_stats(gedi_grid.outgrid,
             gedi_grid.profile, gain=10000, offset=0)
     gedi_grid.write_grid(dtype='uint16', nodata=numpy.iinfo(numpy.uint16).max)
-
