@@ -45,7 +45,7 @@ if __name__ == '__main__':
     if args.shot_number_list is not None:
         shot_number_database.add_shot_number_file(args.shot_number_list)
     elif args.reference_h5 is not None:
-        shot_number_database.add_shot_numbers_from_h5(args.reference_h5)
+        shot_number_database.add_gedi_shot_numbers_from_h5(args.reference_h5)
     else:
         print('error: the --shot-number-list or reference-h5 option must be specified.')
         exit(1)
@@ -65,15 +65,14 @@ if __name__ == '__main__':
         gedi_file = file_database.get_file(orbit)
         if gedi_file:
             print('Extracting from {} ({}/{})'.format(gedi_file.filename, i+1, number_of_files), flush=True)
-            gedi_file.open()
+            gedi_file.open_h5()
             for beam_id in shot_number_database.shot_numbers_by_orbit_beam[orbit]:
                 shots = shot_number_database.shot_numbers_by_orbit_beam[orbit][beam_id]
                 beam = 'BEAM{:04b}'.format(beam_id)
                 gedi_file.copy_shots(output_fid, beam, shots, args.wavedata2d, dataset_list=dataset_list)
-            gedi_file.close()
+            gedi_file.close_h5()
         else:
             print('No matching h5 file for orbit {} ({}/{})'.format(orbit, i+1, number_of_files), flush=True)
 
     # Close output file
     output_fid.close()
-
