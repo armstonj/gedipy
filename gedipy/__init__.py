@@ -18,8 +18,9 @@ GEDIPY_REFERENCE_COORDS = {'1A': {'x': 'geolocation/longitude_bin0', 'y': 'geolo
 GEDIPY_REFERENCE_DATASETS = {'1A': {'quality': None},
                              '1B': {'quality': None},
                              '2A': {'quality': 'quality_flag'},
-                             '2B': {'quality': 'l2b_quality_flag'}}
+                             '2B': {'quality': 'l2b_quality_flag'},
+                             'ATL03': {'quality': None},
+                             'ATL08': {'quality': None}}
 
-GEDIPY_BEAMS = {'BEAM0000':0, 'BEAM0001':1, 'BEAM0010':2, 'BEAM0011':3, 
-                'BEAM0101':5, 'BEAM0110':6, 'BEAM1000':8, 'BEAM1011':11}
-
+GEDIPY_GEDI_BEAMS = {'BEAM0000':0, 'BEAM0001':1, 'BEAM0010':2, 'BEAM0011':3,
+                     'BEAM0101':5, 'BEAM0110':6, 'BEAM1000':8, 'BEAM1011':11}
