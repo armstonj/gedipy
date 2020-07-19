@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     # Load file database
     if args.file_list:
-        file_database.add_file_list(args.file_list)        
+        file_database.add_file_list(args.file_list)
     else:
         print('error: the --file-list option must be specified.')
         exit(1)
@@ -64,14 +64,13 @@ if __name__ == '__main__':
         h5file = file_database.get_file(orbit)
         if h5file is not None:
             print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
-            h5file.open()
+            h5file.open_h5()
             h5file.copy_attrs(output_fid, '.')
             for beam in h5file.beams:
                 h5file.copy_shots(output_fid, beam, geomlist, args.wavedata2d, geom=True, dataset_list=dataset_list)
-            h5file.close()
+            h5file.close_h5()
         else:
             print('No matching h5 file for orbit {} ({}/{})'.format(orbit, i+1, number_of_files), flush=True)
-    
+
     # Close output file 
     output_fid.close()
-
