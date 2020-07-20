@@ -37,7 +37,6 @@ class GEDIGrid:
     def rowcol_to_wgs84(self, rows, cols, binsize):
         """
         Function to convert EASE 2.0 grid row/cols to WGS84 (EPSG:4326 coordinates)
-        Should probably be replaced with a call to pyproj
         """
         e2 = GEDIPY_EASE2_PAR['map_eccentricity']**2.0
         e4 = GEDIPY_EASE2_PAR['map_eccentricity']**4.0
