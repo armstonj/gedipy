@@ -252,8 +252,8 @@ class GEDIH5File(LidarFile):
             elev_lastbin = self.fid[beam+'/geolocation/elevation_lastbin'][start:finish]
             v = (elev_bin0 - elev_lastbin) / (counts - 1)
 
-            bin_dist = numpy.expands_dims(numpy.arange(max_count), axis=1)
-            out_elevation = (numpy.expands_dims(elev_bin0, axis=0) -
+            bin_dist = numpy.expand_dims(numpy.arange(max_count), axis=1)
+            out_elevation = (numpy.expand_dims(elev_bin0, axis=0) -
                 numpy.repeat(bin_dist,v.shape[0],axis=1) * v)
 
             return out_waveforms, out_elevation
