@@ -6,7 +6,7 @@ Generation of gridded GEDI data products
 # Copyright (C) 2020
 
 import numpy
-import pyproj
+from pyproj import Transformer
 
 import rasterio
 from rasterio.crs import CRS
@@ -30,8 +30,8 @@ class GEDIGrid:
     def __init__(self, filename, profile=GEDIPY_RIO_DEFAULT_PROFILE, gedi_domain=52):
         self.filename = filename
         self.profile = profile
-        self.inproj = pyproj.Proj(init='epsg:4326')
-        self.outproj = pyproj.Proj(init=str(profile['crs']))
+        self.inproj = 'epsg:4326'
+        self.outproj = str(profile['crs'])
         self.gedi_domain = gedi_domain
 
     def rowcol_to_wgs84(self, rows, cols, binsize):
@@ -132,7 +132,8 @@ class GEDIGrid:
     def add_data(self, longitude, latitude, dataset, func='simple_stats'):
         valid = ~numpy.isnan(longitude) & ~numpy.isnan(latitude) & ~numpy.isnan(dataset)
         if numpy.any(valid):
-            x,y = pyproj.transform(self.inproj, self.outproj, longitude[valid], latitude[valid])
+            transformer = Transformer.from_crs(self.inproj, self.outproj, always_xy=True)
+            x,y = transformer.transform(longitude[valid], latitude[valid])
             func_method = getattr(userfunctions, func)
             func_method(x, y, dataset[valid], self.outgrid,
                 self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0])
