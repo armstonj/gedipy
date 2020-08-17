@@ -309,7 +309,7 @@ class GEDIH5File(LidarFile):
         out_shape = (max_count, counts.shape[0])
         
         pgap = self.fid[beam+'/pgap_theta'][start:finish]
-        out_pgap_profile = numpy.broadcast_to(pgap, (out_shape))
+        out_pgap_profile = numpy.broadcast_to(pgap, (out_shape)).copy()
         out_pgap_profile[0:start_offset,:] = 1.0
 
         start_indices -= numpy.min(start_indices)
