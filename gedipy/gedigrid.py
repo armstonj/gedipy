@@ -21,7 +21,7 @@ GEDIPY_EASE2_PAR = {'second_reference_latitude': 30.0, 'map_equatorial_radius_m'
                     'xmin': -17367530.45, 'ymax': 7314540.83, 'ncol': 34704, 'nrow': 14616}
 
 GEDIPY_RIO_DEFAULT_PROFILE = {'driver': 'GTiff', 'dtype': 'float32', 'nodata': -9999.0, 'width': 34704,
-                              'height': 14616, 'count': 3, 'crs': CRS.from_epsg(6933),
+                              'height': 14616, 'count': 5, 'crs': CRS.from_epsg(6933),
                               'transform': Affine(1000.8950233495561, 0.0, -17367530.4451615, 0.0, -1000.8950233495561, 7314540.8306386),
                               'blockxsize': 256, 'blockysize': 256, 'tiled': True, 'compress': 'deflate', 'interleave': 'pixel'}
 

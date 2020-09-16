@@ -104,40 +104,73 @@ def convolve_numba(rx, tx, result):
 def simple_stats(x, y, z, outimage, xmin, ymax, binsize):
     """
     Numba function to calculate running mean and variance
-    outimage band 1 = Mean
-    outimage band 2 = Standard deviation
-    outimage band 3 = Number of shots
+    outimage band 1 = Mean (M1)
+    outimage band 2 = Standard deviation (M2)
+    outimage band 3 = Skewness (M3)
+    outimage band 4 = Kurtosis (M4)
+    outimage band 5 = Number of shots (n)
     """
     for i in prange(x.shape[0]):
         col = int((x[i] - xmin) / binsize)
         row = int((ymax - y[i]) / binsize)
         if (row >= 0) & (col >= 0) & (row < outimage.shape[1]) & (col < outimage.shape[2]):
-            outimage[2, row, col] += 1
+            # Intermediate variables
+            n = outimage[4, row, col] + 1
             delta = z[i] - outimage[0, row, col]
-            outimage[0, row, col] += delta / outimage[2, row, col]
-            delta2 = z[i] - outimage[0, row, col]
-            outimage[1, row, col] += delta * delta2
+            delta_n = delta / n
+            delta_n2 = delta_n**2
+            term1 = delta * delta_n * (n - 1)
+            # M1
+            outimage[0, row, col] += delta_n
+            # M4
+            outimage[3, row, col] += (term1 * delta_n2 * (n**2 - 3 * n + 3) + 
+                6 * delta_n2 * outimage[1, row, col] - 4 * delta_n * 
+                outimage[2, row, col])
+            # M3
+            outimage[2, row, col] += (term1 * delta_n * (n - 2) - 3 * 
+                delta_n * outimage[1, row, col])
+            # M2
+            outimage[1, row, col] += term1
+            # Number of shots
+            outimage[4, row, col] = n
 
 
-def finalize_simple_stats(outgrid, profile, gain=10000, offset=0, dtype='uint16', nodata=65535):
+def finalize_simple_stats(outgrid, profile, gain=100, offset=0, dtype='int16', nodata=32767):
     """
-    Retrieve the mean and standard deviation and scale outputs
+    Retrieve the mean, standard deviation, skewness, kurtosis and scale outputs
     """
-    tmp = numpy.empty(outgrid[0].shape)
-    tmp.fill(nodata)
-    numpy.multiply(outgrid[0], gain, out=tmp, where=outgrid[2] > 0)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[2] > 0)
+    # Mean
+    tmp = numpy.full(outgrid[0].shape, nodata, dtype=outgrid.dtype)
+    numpy.multiply(outgrid[0], gain, out=tmp, where=outgrid[4] > 0)
+    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 0)
     outgrid[0] = tmp
 
-    tmp = numpy.empty(outgrid[1].shape)
-    tmp.fill(nodata)
+    # Standard deviation
+    tmp = numpy.full(outgrid[1].shape, nodata, dtype=outgrid.dtype)
     numpy.divide(outgrid[1], outgrid[2], out=tmp, where=outgrid[2] > 1)
-    numpy.sqrt(tmp, out=tmp, where=outgrid[2] > 1)
-    numpy.multiply(tmp, gain, out=tmp, where=outgrid[2] > 1)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[2] > 1)
+    numpy.sqrt(tmp, out=tmp, where=outgrid[4] > 1)
+    numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > 1)
+    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 1)
     outgrid[1] = tmp
 
-    gedimask = outgrid[2,:,0]
+    # Skewness
+    tmp = numpy.full(outgrid[2].shape, nodata, dtype=outgrid.dtype)
+    numpy.sqrt(outgrid[4], out=tmp, where=outgrid[4] > 0)
+    numpy.divide(tmp * outgrid[2], outgrid[1]**1.5, out=tmp, where=outgrid[4] > 1)
+    numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > 1)
+    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 1)
+    outgrid[2] = tmp
+    
+    # Kurtosis
+    tmp = numpy.full(outgrid[3].shape, nodata, dtype=outgrid.dtype)
+    numpy.divide(outgrid[4] * outgrid[3], outgrid[1]**2 - 3, out=tmp, 
+        where=outgrid[4] > 1)
+    numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > 1)
+    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 1)
+    outgrid[3] = tmp
+
+    # Number of shots
+    gedimask = outgrid[4,:,0]
     idx = numpy.argwhere(gedimask == profile['nodata'])
     outgrid[:,idx,:] = nodata
 
