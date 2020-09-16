@@ -538,7 +538,7 @@ class GEDIH5File(LidarFile):
             quality_flag = (self.fid[beam][quality_name][()] == 1)
             if 'sensitivity' in kwargs:
                 beam_sensitivity = self.fid[beam+'/sensitivity'][()]
-                quality_flag &= (beam_sensitivity >= sensitivity)
+                quality_flag &= (beam_sensitivity >= kwargs['sensitivity'])
         else:
             quality_flag = numpy.ones(self.get_nrecords(), dtype=numpy.bool)
         return quality_flag
