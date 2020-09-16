@@ -6,6 +6,7 @@ Grid lidar h5 files on the official GEDI EASE 2.0 grid
 
 import numpy
 import argparse
+from tqdm import tqdm
 
 from gedipy import gedidb
 from gedipy import gedigrid
@@ -56,10 +57,9 @@ if __name__ == '__main__':
 
     # Loop through each h5 file and beam
     number_of_files = len(file_database.file_by_orbit)
-    for i,orbit in enumerate(file_database.file_by_orbit):
+    for orbit in tqdm(file_database.file_by_orbit):
         h5file = file_database.get_file(orbit)
         if h5file:
-            print('Gridding {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
             h5file.open_h5()
             for beam in h5file.beams:
                 longitude, latitude = h5file.get_coordinates(beam)
@@ -71,5 +71,5 @@ if __name__ == '__main__':
     # Finalize and write the result
     if args.userfunc == 'simple_stats':
         gedi_grid.outgrid = userfunctions.finalize_simple_stats(gedi_grid.outgrid,
-            gedi_grid.profile, gain=10000, offset=0)
-    gedi_grid.write_grid(dtype='uint16', nodata=numpy.iinfo(numpy.uint16).max)
+            gedi_grid.profile, gain=100, offset=0)
+    gedi_grid.write_grid(dtype='int16', nodata=numpy.iinfo(numpy.int16).max)

@@ -9,6 +9,7 @@ import pandas
 import geopandas
 import argparse
 import os
+from tqdm import tqdm
 
 from gedipy import gedidb
 from gedipy import userfunctions
@@ -63,10 +64,9 @@ if __name__ == '__main__':
     number_of_orbits = len(file_database.file_by_orbit)
     outdata_list = []
     product_id = None
-    for i,orbit in enumerate(file_database.file_by_orbit):
+    for orbit in tqdm(file_database.file_by_orbit):
         h5file = file_database.get_file(orbit)
         if h5file is not None:
-            print('Exporting {} ({}/{})'.format(h5file.filename, i+1, number_of_orbits), flush=True)
             if not product_id:
                 product_id = h5file.get_product_id()
             h5file.open_h5()

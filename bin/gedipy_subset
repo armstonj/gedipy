@@ -9,6 +9,7 @@ import re
 
 import h5py
 import numpy
+from tqdm import tqdm
 
 from gedipy import gedidb
 from gedipy import userfunctions
@@ -60,17 +61,14 @@ if __name__ == '__main__':
 
     # Loop through and extract shot numbers
     number_of_files = len(file_database.file_by_orbit)
-    for i,orbit in enumerate(file_database.file_by_orbit):
+    for orbit in tqdm(file_database.file_by_orbit):
         h5file = file_database.get_file(orbit)
         if h5file is not None:
-            print('Subsetting {} ({}/{})'.format(h5file.filename, i+1, number_of_files), flush=True)
             h5file.open_h5()
             h5file.copy_attrs(output_fid, '.')
             for beam in h5file.beams:
                 h5file.copy_shots(output_fid, beam, geomlist, args.wavedata2d, geom=True, dataset_list=dataset_list)
             h5file.close_h5()
-        else:
-            print('No matching h5 file for orbit {} ({}/{})'.format(orbit, i+1, number_of_files), flush=True)
 
     # Close output file 
     output_fid.close()

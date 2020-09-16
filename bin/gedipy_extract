@@ -9,6 +9,7 @@ import re
 
 import h5py
 import numpy
+from tqdm import tqdm
 
 from gedipy import gedidb
 from gedipy import userfunctions
@@ -61,18 +62,15 @@ if __name__ == '__main__':
 
     # Loop through and extract shot numbers
     number_of_files = len(shot_number_database.shot_numbers_by_orbit_beam)
-    for i,orbit in enumerate(shot_number_database.shot_numbers_by_orbit_beam):
+    for orbit in tqdm(shot_number_database.shot_numbers_by_orbit_beam):
         gedi_file = file_database.get_file(orbit)
         if gedi_file:
-            print('Extracting from {} ({}/{})'.format(gedi_file.filename, i+1, number_of_files), flush=True)
             gedi_file.open_h5()
             for beam_id in shot_number_database.shot_numbers_by_orbit_beam[orbit]:
                 shots = shot_number_database.shot_numbers_by_orbit_beam[orbit][beam_id]
                 beam = 'BEAM{:04b}'.format(beam_id)
                 gedi_file.copy_shots(output_fid, beam, shots, args.wavedata2d, dataset_list=dataset_list)
             gedi_file.close_h5()
-        else:
-            print('No matching h5 file for orbit {} ({}/{})'.format(orbit, i+1, number_of_files), flush=True)
 
     # Close output file
     output_fid.close()
