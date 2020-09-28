@@ -210,6 +210,7 @@ class GEDIH5File(LidarFile):
         for i in prange(start_indices.shape[0]):
             for j in prange(counts[i]):
                 out_data[j+start_offset, i] = data[start_indices[i] + j]
+        return out_data
 
     def read_tx_waveform(self, beam, start=0, finish=None, minlength=None):
         if not finish:
@@ -226,7 +227,7 @@ class GEDIH5File(LidarFile):
 
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
-        self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+        out_waveforms = self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
 
         return out_waveforms
 
@@ -245,8 +246,8 @@ class GEDIH5File(LidarFile):
 
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
-        self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
-
+        out_waveforms = self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
+        
         if elevation:
             elev_bin0 = self.fid[beam+'/geolocation/elevation_bin0'][start:finish]
             elev_lastbin = self.fid[beam+'/geolocation/elevation_lastbin'][start:finish]
@@ -294,8 +295,10 @@ class GEDIH5File(LidarFile):
             2D numpy.ndarray of read height above ground data
         """
         if not finish:
-            finish = self.fid[beam+'/rx_sample_start_index'].shape[0]
-
+            finish = len(self.fid[beam+'/rx_sample_start_index'])
+        else:
+            pass
+        
         start_indices = self.fid[beam+'/rx_sample_start_index'][start:finish] - 1
         counts = self.fid[beam+'/rx_sample_count'][start:finish]
         pgap_profile = self.fid[beam+'/pgap_theta_z'][start_indices[0]:(start_indices[-1]+counts[-1])]
@@ -304,14 +307,13 @@ class GEDIH5File(LidarFile):
         if minlength:
             max_count = max(minlength, max_count)
         out_shape = (max_count, counts.shape[0])
-
-        out_pgap_profile = numpy.ones(out_shape, dtype=pgap_profile.dtype)
+        
         pgap = self.fid[beam+'/pgap_theta'][start:finish]
-        out_pgap_profile *= numpy.expand_dims(pgap, axis=0)
+        out_pgap_profile = numpy.broadcast_to(pgap, (out_shape)).copy()
         out_pgap_profile[0:start_offset,:] = 1.0
 
         start_indices -= numpy.min(start_indices)
-        self._waveform_1d_to_2d(start_indices, counts, pgap_profile,
+        out_pgap_profile = self._waveform_1d_to_2d(start_indices, counts, pgap_profile,
                                out_pgap_profile, start_offset=start_offset)
 
         if height:
