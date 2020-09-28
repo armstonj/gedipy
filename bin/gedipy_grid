@@ -21,21 +21,27 @@ if __name__ == '__main__':
         help='Output GeoTiff grid filename')
     argparser.add_argument('-d', '--dataset', metavar='STR', type=str,
         help='H5 dataset name to grid')
+    argparser.add_argument('-r', '--reference_image', metavar='STR', type=str,
+        help='Reference image used to define output GEDI grid')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
         help='File containing paths to the H5 files (one per line)')
-    argparser.add_argument('-r', '--resolution', metavar='INT', type=int, default=1000,
+    argparser.add_argument('-R', '--resolution', metavar='INT', type=int, default=1000,
         choices=[100,500,1000,3000,9000,18000,24000],
-        help='Spatial resolution of output grid (m)')
+        help='Spatial resolution of output GEDI EASE 2.0 grid (m)')
     argparser.add_argument('-i', '--index', metavar='INT', type=int, default=None,
         help='Dateset index to grid for 2D datasets')
     argparser.add_argument('-g', '--gedi_domain', metavar='FLOAT', type=float, default=52,
-        help='Latitudinal extent of the GEDI domain (degrees)')
+        help='Latitudinal extent of the GEDI domain for EASE 2.0 grids (degrees)')
     argparser.add_argument('-s', '--sensitivity', metavar='FLOAT', type=float, default=0.9,
         help='Additional GEDI beam sensitivity threshold filter to apply')
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
         help='Geographic coordinate bounding box to clip the grid to [minx maxy maxx miny]')
-    argparser.add_argument('-u','--userfunc', metavar='STR', type=str, default='simple_stats',
-        help='Running grid statistics to compute')
+    argparser.add_argument('-u','--userfunc', metavar='STR', type=str, default='grid_moments',
+        choices=['grid_moments','grid_quantiles'],
+        help='Running grid statistics to compute (grid_quantiles is experimental)')
+    argparser.add_argument('-q', '--quantiles', metavar='FLOAT', nargs='+', type=float,
+        default=[0.0,0.25,0.5,0.75,1.0],
+        help='Quantiles to compute for the grid_quantiles userfunc')
     args = argparser.parse_args()
 
     # Load file database
@@ -46,14 +52,20 @@ if __name__ == '__main__':
         print('error: the --file-list option must be specified.')
         exit(1)
 
+    # Select the gridding algorithm parameters
+    if args.userfunc == 'grid_moments':
+        nbands = 5
+    elif args.userfunc == 'grid_quantiles':
+        nbands = len(args.quantiles) + 1
+
     # Setup the GEDI grid
-    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE,
-        gedi_domain=args.gedi_domain)
-    if args.resolution >= 1000:
-        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution)
+    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
+    if args.reference_image:
+        gedi_grid.init_grid_from_reference(args.reference_image, count=nbands, dtype='float32', 
+            nodata=-9999)
     else:
-        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, gedi_domain=args.gedi_domain)
-        gedi_grid.zoom_gedi_grid(resolution=args.resolution)
+        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution, 
+            gedi_domain=args.gedi_domain, count=nbands, dtype='float32', nodata=-9999)
 
     # Loop through each h5 file and beam
     number_of_files = len(file_database.file_by_orbit)
@@ -65,11 +77,16 @@ if __name__ == '__main__':
                 longitude, latitude = h5file.get_coordinates(beam)
                 dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
                 quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity)
-                gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], func=args.userfunc)
+                gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], 
+                    func=args.userfunc, quantiles=args.quantiles, step=0.1)
             h5file.close_h5()
 
     # Finalize and write the result
-    if args.userfunc == 'simple_stats':
-        gedi_grid.outgrid = userfunctions.finalize_simple_stats(gedi_grid.outgrid,
-            gedi_grid.profile, gain=100, offset=0)
-    gedi_grid.write_grid(dtype='int16', nodata=numpy.iinfo(numpy.int16).max)
+    if args.userfunc == 'grid_moments':
+        gedi_grid.outgrid = userfunctions.finalize_grid_moments(gedi_grid.outgrid,
+            gedi_grid.profile, gain=1, offset=0)
+    elif args.userfunc == 'grid_quantiles':
+        gedi_grid.outgrid = userfunctions.finalize_grid_quantiles(gedi_grid.outgrid,
+            gedi_grid.profile, gain=1, offset=0)
+    gedi_grid.write_grid()
+

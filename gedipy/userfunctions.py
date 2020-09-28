@@ -101,9 +101,9 @@ def convolve_numba(rx, tx, result):
 
 
 @jit(nopython=True, parallel=True)
-def simple_stats(x, y, z, outimage, xmin, ymax, binsize):
+def grid_moments(x, y, z, outimage, xmin, ymax, binsize):
     """
-    Numba function to calculate running mean and variance
+    Numba function to calculate running mean and variance using Welfords algorithm
     outimage band 1 = Mean (M1)
     outimage band 2 = Standard deviation (M2)
     outimage band 3 = Skewness (M3)
@@ -135,46 +135,91 @@ def simple_stats(x, y, z, outimage, xmin, ymax, binsize):
             outimage[4, row, col] = n
 
 
-def finalize_simple_stats(outgrid, profile, gain=100, offset=0, dtype='int16', nodata=32767):
+def finalize_grid_moments(outgrid, profile, gain=1, offset=0):
     """
     Retrieve the mean, standard deviation, skewness, kurtosis and scale outputs
     """
+    # Initialize the output
+    tmpshape = (4, outgrid.shape[1], outgrid.shape[2])
+    tmpgrid = numpy.empty(tmpshape, dtype=outgrid.dtype)
+
     # Mean
-    tmp = numpy.full(outgrid[0].shape, nodata, dtype=outgrid.dtype)
-    numpy.multiply(outgrid[0], gain, out=tmp, where=outgrid[4] > 0)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 0)
-    outgrid[0] = tmp
+    tmpgrid[0] = numpy.where(outgrid[4] > 0, outgrid[0], profile['nodata'])
 
     # Standard deviation
-    tmp = numpy.full(outgrid[1].shape, nodata, dtype=outgrid.dtype)
-    numpy.divide(outgrid[1], outgrid[2], out=tmp, where=outgrid[2] > 1)
+    tmp = numpy.full(outgrid[1].shape, profile['nodata'], dtype=outgrid.dtype)
+    numpy.divide(outgrid[1], outgrid[4] - 1, out=tmp, where=outgrid[4] > 1)
     numpy.sqrt(tmp, out=tmp, where=outgrid[4] > 1)
-    numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > 1)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 1)
-    outgrid[1] = tmp
+    tmpgrid[1] = tmp
 
     # Skewness
-    tmp = numpy.full(outgrid[2].shape, nodata, dtype=outgrid.dtype)
-    numpy.sqrt(outgrid[4], out=tmp, where=outgrid[4] > 0)
-    numpy.divide(tmp * outgrid[2], outgrid[1]**1.5, out=tmp, where=outgrid[4] > 1)
-    numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > 1)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 1)
-    outgrid[2] = tmp
+    tmp = numpy.full(outgrid[2].shape, profile['nodata'], dtype=outgrid.dtype)
+    numpy.sqrt(outgrid[4], out=tmp, where=outgrid[4] > 2)
+    numpy.multiply(tmp, outgrid[2], out=tmp, where=outgrid[4] > 2)
+    numpy.divide(tmp, outgrid[1]**1.5, out=tmp, where=outgrid[4] > 2)
+    tmpgrid[2] = tmp
     
     # Kurtosis
-    tmp = numpy.full(outgrid[3].shape, nodata, dtype=outgrid.dtype)
-    numpy.divide(outgrid[4] * outgrid[3], outgrid[1]**2 - 3, out=tmp, 
-        where=outgrid[4] > 1)
-    numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > 1)
-    numpy.add(tmp, offset, out=tmp, where=outgrid[4] > 1)
-    outgrid[3] = tmp
+    tmp = numpy.full(outgrid[3].shape, profile['nodata'], dtype=outgrid.dtype)
+    numpy.multiply(outgrid[4], outgrid[3], out=tmp, where=outgrid[4] > 3)
+    numpy.divide(tmp, outgrid[1]**2 - 3, out=tmp, where=outgrid[4] > 3)
+    tmpgrid[3] = tmp
 
-    # Number of shots
-    gedimask = outgrid[4,:,0]
-    idx = numpy.argwhere(gedimask == profile['nodata'])
-    outgrid[:,idx,:] = nodata
+    # Scale and offset
+    for i in range(tmpgrid.shape[0]):
+        tmp = tmpgrid[i]
+        numpy.multiply(tmp, gain, out=tmp, where=outgrid[4] > i)
+        numpy.add(tmp, offset, out=tmp, where=outgrid[4] > i)
+        outgrid[i] = tmp
 
-    return outgrid.astype(dtype)
+    return outgrid.astype(profile['dtype'])
+
+
+@jit(nopython=True, parallel=True)
+def grid_quantiles(x, y, z, outimage, xmin, ymax, binsize, quantiles, step):
+    """
+    Numba function to calculate running quantiles using the FAME algorithm
+    This is experimental - results are an approximation
+    http://www.eng.tau.ac.il/~shavitt/courses/LargeG/streaming-median.pdf
+    """
+    nquantiles = len(quantiles)
+    for j in prange(nquantiles):
+        step_val = max([x[0] / 2, step])
+        step_up = 1.0 - quantiles[j]
+        step_down = quantiles[j]
+        for i in prange(x.shape[0]):
+            col = int((x[i] - xmin) / binsize)
+            row = int((ymax - y[i]) / binsize)
+            if (row >= 0) & (col >= 0) & (row < outimage.shape[1]) & (col < outimage.shape[2]):
+                if outimage[-1,row,col] > 0:
+                    if quantiles[j] == 0:
+                        if z[i] < outimage[j,row,col]:
+                            outimage[j,row,col] = z[i]
+                    elif quantiles[j] == 1:
+                        if z[i] > outimage[j,row,col]:
+                            outimage[j,row,col] = z[i]
+                    else:
+                        if outimage[j,row,col] > z[i]:
+                            outimage[j,row,col] -= step_val * step_up
+                        elif outimage[j,row,col] < z[i]:
+                            outimage[j,row,col] += step_val * step_down
+                        if abs(z[i] - outimage[j,row,col]) < step_val:
+                            step_val /= 2.0
+                else:
+                    outimage[j,row,col] = z[i]
+
+
+def finalize_grid_quantiles(outgrid, profile, gain=1, offset=0):
+    """
+    Retrieve the quantiles and scale outputs
+    """
+    for i in range(outgrid.shape[0] - 1):
+        tmp = outgrid[i]
+        numpy.multiply(tmp, gain, out=tmp, where=outgrid[-1] > 0)
+        numpy.add(tmp, offset, out=tmp, where=outgrid[-1] > 0)
+        outgrid[i] = tmp
+
+    return outgrid.astype(profile['dtype'])
 
 
 @jit(nopython=True)

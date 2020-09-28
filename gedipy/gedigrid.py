@@ -27,12 +27,9 @@ GEDIPY_RIO_DEFAULT_PROFILE = {'driver': 'GTiff', 'dtype': 'float32', 'nodata': -
 
 
 class GEDIGrid:
-    def __init__(self, filename, profile=GEDIPY_RIO_DEFAULT_PROFILE, gedi_domain=52):
+    def __init__(self, filename, profile=GEDIPY_RIO_DEFAULT_PROFILE):
         self.filename = filename
         self.profile = profile
-        self.inproj = 'epsg:4326'
-        self.outproj = str(profile['crs'])
-        self.gedi_domain = gedi_domain
 
     def rowcol_to_wgs84(self, rows, cols, binsize):
         """
@@ -67,18 +64,36 @@ class GEDIGrid:
 
         return longitude, latitude
 
-    def init_gedi_ease2_grid(self, bbox=None, resolution=1000):
+    def init_grid_from_reference(self, reference_image, **kwargs):
         """
-        Prepare the output image
+        Prepare the output grid using a reference image
         """
-        if resolution in (1000,3000,9000,18000,24000):
-            rkm = resolution / 1000
-            ncol = int(GEDIPY_EASE2_PAR['ncol'] / rkm)
-            nrow = int(GEDIPY_EASE2_PAR['nrow'] / rkm)
-            binsize = GEDIPY_EASE2_PAR['binsize'] * rkm
-        else:
-            print('Only 1, 3, 9, 18, and 24 km resolutions accepted')
+        with rasterio.open(reference_image) as src:
+            self.profile = src.profile
+        
+        for key,value in kwargs.items():
+            if key in self.profile:
+                self.profile[key] = value
+
+        self.outgrid = numpy.zeros((self.profile['count'], self.profile['height'], self.profile['width']), 
+            dtype=self.profile['dtype'])
+
+    def init_gedi_ease2_grid(self, bbox=None, resolution=1000, gedi_domain=52, **kwargs):
+        """
+        Prepare the output GEDI grid
+        """
+        if resolution not in (100,500,1000,3000,9000,18000,24000):
+            print('Only 100 m, 500 m, 1 km, 3 km, 9 km, 18 km, and 24 km resolutions accepted')
             exit(1)
+
+        if resolution < 1000:
+            rkm = 1.0
+        else:
+            rkm = resolution / 1000
+        
+        ncol = int(GEDIPY_EASE2_PAR['ncol'] / rkm)
+        nrow = int(GEDIPY_EASE2_PAR['nrow'] / rkm)
+        binsize = GEDIPY_EASE2_PAR['binsize'] * rkm
 
         rows = numpy.arange(nrow, dtype=numpy.float32)
         cols = numpy.arange(ncol, dtype=numpy.float32)
@@ -99,41 +114,58 @@ class GEDIGrid:
         else:
             xmin = GEDIPY_EASE2_PAR['xmin']
             ymax = GEDIPY_EASE2_PAR['ymax']
-
-        self.outgrid = numpy.zeros((self.profile['count'], nrow, ncol), dtype=self.profile['dtype'])
-        idx = numpy.argwhere((latgrid > self.gedi_domain) | (latgrid < -self.gedi_domain))
-        self.outgrid[:,idx,:] = self.profile['nodata']
-
-        self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2],
+         
+        self.profile.update(height=nrow, width=ncol,
             transform=Affine(binsize, 0.0, xmin, 0.0, -binsize, ymax))
-
+        for key,value in kwargs.items():
+            if key in self.profile:
+                self.profile[key] = value
+        
+        self.outgrid = numpy.zeros((self.profile['count'], nrow, ncol), dtype=self.profile['dtype']) 
+        
+        self.gedimask = numpy.ones((1, nrow, ncol), dtype=numpy.bool)
+        idx = numpy.argwhere((latgrid > gedi_domain) | (latgrid < -gedi_domain))
+        self.gedimask[0,idx,:] = False
+       
+        if resolution < 1000:
+            self.zoom_gedi_grid(resolution=resolution)
+ 
     def zoom_gedi_grid(self, resolution=1000):
         if resolution in (100,500):
             res_factor = numpy.floor(1000 / resolution)
         else:
             print('Only 500 m and 100 m resolutions accepted.')
             exit(1)
+        
+        self.outgrid = ndimage.zoom(self.outgrid, [1, res_factor, res_factor], order=0, mode='nearest')
+        if hasattr(self, 'gedimask'):
+            self.gedimask = ndimage.zoom(self.gedimask, [1, res_factor, res_factor], order=0, mode='nearest')
 
-        self.outgrid = ndimage.zoom(self.outgrid, res_factor, order=1, mode='nearest')
         binsize = GEDIPY_EASE2_PAR['binsize'] / res_factor
-
+        
         self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2],
-            transform=Affine(binsize, 0.0, self.profile[2], 0.0, -binsize, self.profile[5]))
+            transform=Affine(binsize, 0.0, self.profile['transform'][2], 0.0, 
+                             -binsize, self.profile['transform'][5]))
 
-    def write_grid(self, **kwargs):
-        for key,value in kwargs.items():
-            if key in self.profile:
-                self.profile[key] = value
+    def write_grid(self):
+        if hasattr(self, 'gedimask'):
+            self.outgrid = numpy.where(self.gedimask, self.outgrid, self.profile['nodata'])
+
         with rasterio.Env():
             with rasterio.open(self.filename, 'w', **self.profile) as dst:
                 dst.write(self.outgrid)
                 dst.build_overviews([2,4,8,16], Resampling.average)
 
-    def add_data(self, longitude, latitude, dataset, func='simple_stats'):
+    def add_data(self, longitude, latitude, dataset, func='grid_moments', **kwargs):
         valid = ~numpy.isnan(longitude) & ~numpy.isnan(latitude) & ~numpy.isnan(dataset)
         if numpy.any(valid):
-            transformer = Transformer.from_crs(self.inproj, self.outproj, always_xy=True)
+            transformer = Transformer.from_crs('epsg:4326', str(self.profile['crs']), always_xy=True)
             x,y = transformer.transform(longitude[valid], latitude[valid])
-            func_method = getattr(userfunctions, func)
-            func_method(x, y, dataset[valid], self.outgrid,
-                self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0])
+            if func == 'grid_moments':
+                userfunctions.grid_moments(x, y, dataset[valid], self.outgrid,
+                    self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0])
+        elif func == 'grid_quantiles':
+                userfunctions.grid_quantiles(x, y, dataset[valid], self.outgrid,
+                    self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0],
+                    kwargs['quantiles'], kwargs['step'])
+
