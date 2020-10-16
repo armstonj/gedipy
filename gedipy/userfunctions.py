@@ -101,7 +101,7 @@ def convolve_numba(rx, tx, result):
 
 
 @jit(nopython=True, parallel=True)
-def grid_moments(x, y, z, outimage, xmin, ymax, binsize):
+def grid_moments(x, y, z, outimage, xmin, ymax, xbinsize, ybinsize):
     """
     Numba function to calculate running mean and variance using Welfords algorithm
     outimage band 1 = Mean (M1)
@@ -111,8 +111,8 @@ def grid_moments(x, y, z, outimage, xmin, ymax, binsize):
     outimage band 5 = Number of shots (n)
     """
     for i in prange(x.shape[0]):
-        col = int((x[i] - xmin) / binsize)
-        row = int((ymax - y[i]) / binsize)
+        col = int((x[i] - xmin) / xbinsize)
+        row = int((ymax - y[i]) / ybinsize)
         if (row >= 0) & (col >= 0) & (row < outimage.shape[1]) & (col < outimage.shape[2]):
             # Intermediate variables
             n = outimage[4, row, col] + 1
@@ -162,7 +162,8 @@ def finalize_grid_moments(outgrid, profile, gain=1, offset=0):
     # Kurtosis
     tmp = numpy.full(outgrid[3].shape, profile['nodata'], dtype=outgrid.dtype)
     numpy.multiply(outgrid[4], outgrid[3], out=tmp, where=outgrid[4] > 3)
-    numpy.divide(tmp, outgrid[1]**2 - 3, out=tmp, where=outgrid[4] > 3)
+    numpy.divide(tmp, outgrid[1]**2, out=tmp, where=outgrid[4] > 3)
+    numpy.subtract(tmp, 3, out=tmp, where=outgrid[4] > 3)
     tmpgrid[3] = tmp
 
     # Scale and offset
@@ -176,7 +177,7 @@ def finalize_grid_moments(outgrid, profile, gain=1, offset=0):
 
 
 @jit(nopython=True, parallel=True)
-def grid_quantiles(x, y, z, outimage, xmin, ymax, binsize, quantiles, step):
+def grid_quantiles(x, y, z, outimage, xmin, ymax, xbinsize, ybinsize, quantiles, step):
     """
     Numba function to calculate running quantiles using the FAME algorithm
     This is experimental - results are an approximation
@@ -188,8 +189,8 @@ def grid_quantiles(x, y, z, outimage, xmin, ymax, binsize, quantiles, step):
         step_up = 1.0 - quantiles[j]
         step_down = quantiles[j]
         for i in prange(x.shape[0]):
-            col = int((x[i] - xmin) / binsize)
-            row = int((ymax - y[i]) / binsize)
+            col = int((x[i] - xmin) / xbinsize)
+            row = int((ymax - y[i]) / ybinsize)
             if (row >= 0) & (col >= 0) & (row < outimage.shape[1]) & (col < outimage.shape[2]):
                 if outimage[-1,row,col] > 0:
                     if quantiles[j] == 0:

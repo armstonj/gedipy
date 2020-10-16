@@ -536,11 +536,17 @@ class GEDIH5File(LidarFile):
     def get_quality_flag(self, beam, **kwargs):
         quality_name = GEDIPY_REFERENCE_DATASETS[self.get_product_id()]['quality']
         if quality_name:
-            beam_sensitivity = self.fid[beam+'/sensitivity'][()]
             quality_flag = (self.fid[beam][quality_name][()] == 1)
             if 'sensitivity' in kwargs:
                 beam_sensitivity = self.fid[beam+'/sensitivity'][()]
                 quality_flag &= (beam_sensitivity >= kwargs['sensitivity'])
+            if 'nonull' in kwargs:
+                if 'index' in kwargs:
+                    index = kwargs['index']
+                    tmp = self.fid[beam][name][:,index]
+                else:
+                    tmp = self.fid[beam][name][()]                
+                quality_flag &= (tmp != -9999)
         else:
             quality_flag = numpy.ones(self.get_nrecords(), dtype=numpy.bool)
         return quality_flag

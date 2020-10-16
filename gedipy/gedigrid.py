@@ -17,12 +17,12 @@ from scipy import ndimage
 from . import userfunctions
 
 GEDIPY_EASE2_PAR = {'second_reference_latitude': 30.0, 'map_equatorial_radius_m': 6378137.0,
-                    'map_eccentricity': 0.081819190843, 'binsize': 1000.8950233495561,
-                    'xmin': -17367530.45, 'ymax': 7314540.83, 'ncol': 34704, 'nrow': 14616}
+                    'map_eccentricity': 0.081819190843, 'binsize': [1000.895023349556141,1000.895023349562052],
+                    'xmin': -17367530.445161499083042, 'ymax': 7314540.830638599582016, 'ncol': 34704, 'nrow': 14616}
 
 GEDIPY_RIO_DEFAULT_PROFILE = {'driver': 'GTiff', 'dtype': 'float32', 'nodata': -9999.0, 'width': 34704,
                               'height': 14616, 'count': 5, 'crs': CRS.from_epsg(6933),
-                              'transform': Affine(1000.8950233495561, 0.0, -17367530.4451615, 0.0, -1000.8950233495561, 7314540.8306386),
+                              'transform': Affine(1000.895023349556141, 0.0, -17367530.445161499083042, 0.0, -1000.895023349562052, 7314540.8306386),
                               'blockxsize': 256, 'blockysize': 256, 'tiled': True, 'compress': 'deflate', 'interleave': 'pixel'}
 
 
@@ -44,8 +44,8 @@ class GEDIGrid:
 
         s0 = ( cols.size - 1 ) / 2.0
         r0 = ( rows.size - 1 ) / 2.0
-        x = ( cols - s0 ) * binsize
-        y = ( r0 - rows ) * binsize
+        x = ( cols - s0 ) * binsize[0]
+        y = ( r0 - rows ) * binsize[1]
 
         qp = ( ( 1.0 - e2 ) * ( ( 1.0 / ( 1.0 - e2 ) ) - ( 1.0 / ( 2.0 * GEDIPY_EASE2_PAR['map_eccentricity'] ) ) *
              numpy.log( ( 1.0 - GEDIPY_EASE2_PAR['map_eccentricity'] ) / ( 1.0 + GEDIPY_EASE2_PAR['map_eccentricity'] ) ) ) )
@@ -93,7 +93,7 @@ class GEDIGrid:
         
         ncol = int(GEDIPY_EASE2_PAR['ncol'] / rkm)
         nrow = int(GEDIPY_EASE2_PAR['nrow'] / rkm)
-        binsize = GEDIPY_EASE2_PAR['binsize'] * rkm
+        binsize = [b * rkm for b in GEDIPY_EASE2_PAR['binsize']]
 
         rows = numpy.arange(nrow, dtype=numpy.float32)
         cols = numpy.arange(ncol, dtype=numpy.float32)
@@ -106,8 +106,8 @@ class GEDIGrid:
             nrow = numpy.count_nonzero(ymask)
 
             idx = numpy.ix_(xmask,ymask)
-            xmin = GEDIPY_EASE2_PAR['xmin'] + numpy.min(idx[0]) * binsize
-            ymax = GEDIPY_EASE2_PAR['ymax'] - numpy.min(idx[1]) * binsize
+            xmin = GEDIPY_EASE2_PAR['xmin'] + numpy.min(idx[0]) * binsize[0]
+            ymax = GEDIPY_EASE2_PAR['ymax'] - numpy.min(idx[1]) * binsize[1]
 
             longrid = longrid[xmask]
             latgrid = latgrid[ymask]
@@ -116,7 +116,7 @@ class GEDIGrid:
             ymax = GEDIPY_EASE2_PAR['ymax']
          
         self.profile.update(height=nrow, width=ncol,
-            transform=Affine(binsize, 0.0, xmin, 0.0, -binsize, ymax))
+            transform=Affine(binsize[0], 0.0, xmin, 0.0, -binsize[1], ymax))
         for key,value in kwargs.items():
             if key in self.profile:
                 self.profile[key] = value
@@ -141,16 +141,16 @@ class GEDIGrid:
         if hasattr(self, 'gedimask'):
             self.gedimask = ndimage.zoom(self.gedimask, [1, res_factor, res_factor], order=0, mode='nearest')
 
-        binsize = GEDIPY_EASE2_PAR['binsize'] / res_factor
+        binsize = [b / res_factor for b in GEDIPY_EASE2_PAR['binsize']]
         
         self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2],
-            transform=Affine(binsize, 0.0, self.profile['transform'][2], 0.0, 
-                             -binsize, self.profile['transform'][5]))
+            transform=Affine(binsize[0], 0.0, self.profile['transform'][2], 0.0, 
+                             -binsize[1], self.profile['transform'][5]))
 
     def write_grid(self):
         if hasattr(self, 'gedimask'):
             self.outgrid = numpy.where(self.gedimask, self.outgrid, self.profile['nodata'])
-
+        
         with rasterio.Env():
             with rasterio.open(self.filename, 'w', **self.profile) as dst:
                 dst.write(self.outgrid)
@@ -163,9 +163,11 @@ class GEDIGrid:
             x,y = transformer.transform(longitude[valid], latitude[valid])
             if func == 'grid_moments':
                 userfunctions.grid_moments(x, y, dataset[valid], self.outgrid,
-                    self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0])
+                    self.profile['transform'][2], self.profile['transform'][5], 
+                    self.profile['transform'][0], -self.profile['transform'][4])
         elif func == 'grid_quantiles':
                 userfunctions.grid_quantiles(x, y, dataset[valid], self.outgrid,
-                    self.profile['transform'][2], self.profile['transform'][5], self.profile['transform'][0],
+                    self.profile['transform'][2], self.profile['transform'][5], 
+                    self.profile['transform'][0], -self.profile['transform'][4],
                     kwargs['quantiles'], kwargs['step'])
 

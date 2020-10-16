@@ -76,7 +76,8 @@ if __name__ == '__main__':
             for beam in h5file.beams:
                 longitude, latitude = h5file.get_coordinates(beam)
                 dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
-                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity)
+                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity, 
+                    nonull=args.dataset, index=args.index)
                 gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], 
                     func=args.userfunc, quantiles=args.quantiles, step=0.1)
             h5file.close_h5()
