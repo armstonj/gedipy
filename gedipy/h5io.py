@@ -541,6 +541,7 @@ class GEDIH5File(LidarFile):
                 beam_sensitivity = self.fid[beam+'/sensitivity'][()]
                 quality_flag &= (beam_sensitivity >= kwargs['sensitivity'])
             if 'nonull' in kwargs:
+                name = kwargs['nonull']
                 if 'index' in kwargs:
                     index = kwargs['index']
                     tmp = self.fid[beam][name][:,index]
@@ -899,13 +900,16 @@ class ATL08H5File(LidarFile):
         return night_flag
 
     def get_quality_flag(self, beam, **kwargs):
+        """
+        Other quality flag options to consider:
         quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/terrain_flg'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/segment_watermask'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/cloud_flag_atm'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/dem_removal_flag'][()] == 0)
         quality_flag &= (self.fid[beam+'/land_segments/ph_removal_flag'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'][()] <
+        """
+        quality_flag = (self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'][()] <
             numpy.finfo(self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'].dtype).max)
         if len(kwargs) > 0:
             for k in kwargs:
