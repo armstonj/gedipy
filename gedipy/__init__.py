@@ -5,6 +5,10 @@ Main module
 # This file is part of GEDIPy
 # Copyright (C) 2020
 
+from os import path
+package_dir = path.abspath(path.dirname(__file__))
+__all__=['kmpfit']
+
 GEDIPY_VERSION = '0.0.1'
 __version__ = GEDIPY_VERSION
 
