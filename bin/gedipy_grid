@@ -25,6 +25,8 @@ if __name__ == '__main__':
         help='Reference image used to define output GEDI grid')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
         help='File containing paths to the H5 files (one per line)')
+    argparser.add_argument('-F', '--files', metavar='FILE', nargs='+',
+        help='H5 file paths (space delimited)')
     argparser.add_argument('-R', '--resolution', metavar='INT', type=int, default=1000,
         choices=[100,500,1000,3000,9000,18000,24000],
         help='Spatial resolution of output GEDI EASE 2.0 grid (m)')
@@ -49,8 +51,12 @@ if __name__ == '__main__':
     if args.file_list:
         file_database.add_file_list(args.file_list)
     else:
-        print('error: the --file-list option must be specified.')
-        exit(1)
+        if len(args.files) > 0:
+            for fn in args.files:
+                file_database.add_file(fn)
+        else:
+            print('error: the --file-list or --files option must be specified.')
+            exit(1)
 
     # Select the gridding algorithm parameters
     if args.userfunc == 'grid_moments':

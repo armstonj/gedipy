@@ -78,22 +78,19 @@ class FileDatabase:
 
     def add_file_list(self, list_filename):
         with open(list_filename, 'r') as fid:
-            product_id_list = []
             for line in fid:
                 fn = line.rstrip('\n')
                 if len(fn) > 0:
-                    h5file = self.get_reader(fn)
-                    if h5file:
-                        if h5file.is_valid():
-                            orbit = h5file.get_orbit_number()
-                            product_id = h5file.get_product_id()
-                            if product_id not in product_id_list and len(product_id_list) > 0:
-                                print('Multiple lidar file types in {}'.format(list_filename))
-                                exit(1)
-                            self.file_by_orbit[orbit] = h5file
-                            product_id_list.append(product_id)
-                        else:
-                            print('{} is not a valid H5 file'.format(fn))
+                    self.add_file(fn)
+
+    def add_file(self, filename):
+        h5file = self.get_reader(filename)
+        if h5file:
+            if h5file.is_valid():
+                orbit = h5file.get_orbit_number()
+                self.file_by_orbit[orbit] = h5file
+            else:
+                print('{} is not a valid H5 file'.format(filename))
 
     def get_file(self, orbit_number):
         if orbit_number in self.file_by_orbit:
