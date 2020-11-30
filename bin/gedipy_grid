@@ -64,6 +64,8 @@ if __name__ == '__main__':
         nbands = 5
     elif args.userfunc == 'grid_quantiles':
         nbands = len(args.quantiles) + 1
+    else:
+        nbands = 1
 
     # Setup the GEDI grid
     gedi_grid = gedigrid.GEDIGrid(profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
