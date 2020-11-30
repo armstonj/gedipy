@@ -6,6 +6,7 @@ Generation of gridded GEDI data products
 # Copyright (C) 2020
 
 import numpy
+import json
 from pyproj import Transformer
 
 import rasterio
@@ -13,6 +14,7 @@ from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from affine import Affine
 from scipy import ndimage
+from scipy import stats
 
 from . import userfunctions
 
@@ -27,8 +29,7 @@ GEDIPY_RIO_DEFAULT_PROFILE = {'driver': 'GTiff', 'dtype': 'float32', 'nodata': -
 
 
 class GEDIGrid:
-    def __init__(self, filename, profile=GEDIPY_RIO_DEFAULT_PROFILE):
-        self.filename = filename
+    def __init__(self, profile=GEDIPY_RIO_DEFAULT_PROFILE):
         self.profile = profile
 
     def rowcol_to_wgs84(self, rows, cols, binsize):
@@ -64,18 +65,42 @@ class GEDIGrid:
 
         return longitude, latitude
 
+    def init_grid_from_config(self, grid_config, **kwargs):
+        """
+        Pepare the output grid using a JSON config file
+        """
+        if not isinstance(grid_config, dict):
+            with open(grid_config, 'r') as f:
+                grid_config = json.load(f)
+
+        if 'epsg' in grid_config.keys():
+            self.profile['crs'] = CRS.from_epsg(grid_config['epsg'])
+        if grid_config.keys() >= {'pixelxsize','pixelysize','ulx','uly'}:
+            self.profile['transform'] = Affine(grid_config['pixelxsize'], 0.0, grid_config['ulx'],
+                0.0, -grid_config['pixelysize'], grid_config['uly'])
+        for key,value in grid_config.items():
+            if key in self.profile:
+                self.profile[key] = value
+
+        for key,value in kwargs.items():
+            if key in self.profile:
+                self.profile[key] = value
+
+        self.outgrid = numpy.zeros((self.profile['count'], self.profile['height'], self.profile['width']),
+            dtype=self.profile['dtype'])
+
     def init_grid_from_reference(self, reference_image, **kwargs):
         """
         Prepare the output grid using a reference image
         """
         with rasterio.open(reference_image) as src:
             self.profile = src.profile
-        
+
         for key,value in kwargs.items():
             if key in self.profile:
                 self.profile[key] = value
 
-        self.outgrid = numpy.zeros((self.profile['count'], self.profile['height'], self.profile['width']), 
+        self.outgrid = numpy.zeros((self.profile['count'], self.profile['height'], self.profile['width']),
             dtype=self.profile['dtype'])
 
     def init_gedi_ease2_grid(self, bbox=None, resolution=1000, gedi_domain=52, **kwargs):
@@ -90,7 +115,7 @@ class GEDIGrid:
             rkm = 1.0
         else:
             rkm = resolution / 1000
-        
+
         ncol = int(GEDIPY_EASE2_PAR['ncol'] / rkm)
         nrow = int(GEDIPY_EASE2_PAR['nrow'] / rkm)
         binsize = [b * rkm for b in GEDIPY_EASE2_PAR['binsize']]
@@ -114,47 +139,55 @@ class GEDIGrid:
         else:
             xmin = GEDIPY_EASE2_PAR['xmin']
             ymax = GEDIPY_EASE2_PAR['ymax']
-         
+
         self.profile.update(height=nrow, width=ncol,
             transform=Affine(binsize[0], 0.0, xmin, 0.0, -binsize[1], ymax))
         for key,value in kwargs.items():
             if key in self.profile:
                 self.profile[key] = value
-        
-        self.outgrid = numpy.zeros((self.profile['count'], nrow, ncol), dtype=self.profile['dtype']) 
-        
+
+        self.outgrid = numpy.zeros((self.profile['count'], nrow, ncol), dtype=self.profile['dtype'])
+
         self.gedimask = numpy.ones((1, nrow, ncol), dtype=numpy.bool)
         idx = numpy.argwhere((latgrid > gedi_domain) | (latgrid < -gedi_domain))
         self.gedimask[0,idx,:] = False
-       
+
         if resolution < 1000:
             self.zoom_gedi_grid(resolution=resolution)
- 
+
     def zoom_gedi_grid(self, resolution=1000):
         if resolution in (100,500):
             res_factor = numpy.floor(1000 / resolution)
         else:
             print('Only 500 m and 100 m resolutions accepted.')
             exit(1)
-        
+
         self.outgrid = ndimage.zoom(self.outgrid, [1, res_factor, res_factor], order=0, mode='nearest')
         if hasattr(self, 'gedimask'):
             self.gedimask = ndimage.zoom(self.gedimask, [1, res_factor, res_factor], order=0, mode='nearest')
 
         binsize = [b / res_factor for b in GEDIPY_EASE2_PAR['binsize']]
-        
+
         self.profile.update(height=self.outgrid.shape[1], width=self.outgrid.shape[2],
-            transform=Affine(binsize[0], 0.0, self.profile['transform'][2], 0.0, 
+            transform=Affine(binsize[0], 0.0, self.profile['transform'][2], 0.0,
                              -binsize[1], self.profile['transform'][5]))
 
-    def write_grid(self):
+    def reset_grid(self):
+        self.outgrid = numpy.zeros((self.profile['count'], self.profile['height'], self.profile['width']),
+            dtype=self.profile['dtype'])
+
+    def write_grid(self, filename, descriptions=None):
         if hasattr(self, 'gedimask'):
             self.outgrid = numpy.where(self.gedimask, self.outgrid, self.profile['nodata'])
-        
+
         with rasterio.Env():
-            with rasterio.open(self.filename, 'w', **self.profile) as dst:
+            with rasterio.open(filename, 'w', **self.profile) as dst:
                 dst.write(self.outgrid)
                 dst.build_overviews([2,4,8,16], Resampling.average)
+                if descriptions:
+                    for i in range(self.outgrid.shape[0]):
+                        dst.set_band_description(i+1, descriptions[i])
+
 
     def add_data(self, longitude, latitude, dataset, func='grid_moments', **kwargs):
         valid = ~numpy.isnan(longitude) & ~numpy.isnan(latitude) & ~numpy.isnan(dataset)
@@ -163,11 +196,76 @@ class GEDIGrid:
             x,y = transformer.transform(longitude[valid], latitude[valid])
             if func == 'grid_moments':
                 userfunctions.grid_moments(x, y, dataset[valid], self.outgrid,
-                    self.profile['transform'][2], self.profile['transform'][5], 
+                    self.profile['transform'][2], self.profile['transform'][5],
                     self.profile['transform'][0], -self.profile['transform'][4])
-        elif func == 'grid_quantiles':
+            elif func == 'grid_quantiles':
                 userfunctions.grid_quantiles(x, y, dataset[valid], self.outgrid,
-                    self.profile['transform'][2], self.profile['transform'][5], 
+                    self.profile['transform'][2], self.profile['transform'][5],
                     self.profile['transform'][0], -self.profile['transform'][4],
                     kwargs['quantiles'], kwargs['step'])
+            else:
+                x_edge = numpy.sort(self.profile['transform'][2] + numpy.arange(self.profile['width'] + 1) *
+                    self.profile['transform'][0])
+                y_edge = numpy.sort(self.profile['transform'][5] + numpy.arange(self.profile['height'] + 1) *
+                    self.profile['transform'][4])
+                tmp, x_edge, y_edge, binnumber = stats.binned_statistic_2d(x, y, dataset[valid],
+                    statistic=func, bins=[x_edge, y_edge])
+                tmp = numpy.expand_dims(tmp.T[::-1,...], axis=0)
+                self.outgrid = numpy.where(numpy.isnan(tmp), self.profile['nodata'], tmp)
 
+
+    def finalize_grid(self, gain=1, offset=0, func='grid_moments'):
+        """
+        Retrieve the mean, standard deviation, skewness, kurtosis and scale outputs
+        """
+        if func == 'grid_moments':
+
+            # Initialize the output
+            tmpshape = (4, self.outgrid.shape[1], self.outgrid.shape[2])
+            tmpgrid = numpy.empty(tmpshape, dtype=self.outgrid.dtype)
+
+            # Mean
+            tmpgrid[0] = numpy.where(self.outgrid[4] > 0, self.outgrid[0], self.profile['nodata'])
+
+            # Standard deviation
+            tmp = numpy.full(self.outgrid[1].shape, self.profile['nodata'], dtype=self.outgrid.dtype)
+            numpy.divide(self.outgrid[1], self.outgrid[4] - 1, out=tmp, where=self.outgrid[4] > 1)
+            numpy.sqrt(tmp, out=tmp, where=self.outgrid[4] > 1)
+            tmpgrid[1] = tmp
+
+            # Skewness
+            tmp = numpy.full(self.outgrid[2].shape, self.profile['nodata'], dtype=self.outgrid.dtype)
+            numpy.sqrt(self.outgrid[4], out=tmp, where=self.outgrid[4] > 2)
+            numpy.multiply(tmp, self.outgrid[2], out=tmp, where=self.outgrid[4] > 2)
+            numpy.divide(tmp, self.outgrid[1]**1.5, out=tmp, where=self.outgrid[4] > 2)
+            tmpgrid[2] = tmp
+
+            # Kurtosis
+            tmp = numpy.full(self.outgrid[3].shape, self.profile['nodata'], dtype=self.outgrid.dtype)
+            numpy.multiply(self.outgrid[4], self.outgrid[3], out=tmp, where=self.outgrid[4] > 3)
+            numpy.divide(tmp, self.outgrid[1]**2, out=tmp, where=self.outgrid[4] > 3)
+            numpy.subtract(tmp, 3, out=tmp, where=self.outgrid[4] > 3)
+            tmpgrid[3] = tmp
+
+            # Scale and offset
+            for i in range(tmpgrid.shape[0]):
+                tmp = tmpgrid[i]
+                numpy.multiply(tmp, gain, out=tmp, where=self.outgrid[4] > i)
+                numpy.add(tmp, offset, out=tmp, where=self.outgrid[4] > i)
+                self.outgrid[i] = tmp.astype(self.profile['dtype'])
+
+        elif func == 'grid_quantiles':
+
+            for i in range(self.outgrid.shape[0] - 1):
+                tmp = self.outgrid[i]
+                numpy.multiply(tmp, gain, out=tmp, where=self.outgrid[-1] > 0)
+                numpy.add(tmp, offset, out=tmp, where=self.outgrid[-1] > 0)
+                self.outgrid[i] = tmp.astype(self.profile['dtype'])
+
+        else:
+
+            numpy.multiply(self.outgrid, gain, out=self.outgrid,
+                where=self.outgrid != self.profile['nodata'])
+            numpy.add(self.outgrid, offset, out=self.outgrid,
+                where=self.outgrid != self.profile['nodata'])
+            self.outgrid = self.outgrid.astype(self.profile['dtype'])

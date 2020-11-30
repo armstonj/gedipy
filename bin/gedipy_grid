@@ -10,7 +10,6 @@ from tqdm import tqdm
 
 from gedipy import gedidb
 from gedipy import gedigrid
-from gedipy import userfunctions
 
 
 if __name__ == '__main__':
@@ -22,7 +21,9 @@ if __name__ == '__main__':
     argparser.add_argument('-d', '--dataset', metavar='STR', type=str,
         help='H5 dataset name to grid')
     argparser.add_argument('-r', '--reference_image', metavar='STR', type=str,
-        help='Reference image used to define output GEDI grid')
+        help='Reference image used to define output grid')
+    argparser.add_argument('-g', '--grid_config', metavar='STR', type=str,
+        help='JSON configuration file used to define output grid')
     argparser.add_argument('-f', '--file-list', metavar='FILE', type=str,
         help='File containing paths to the H5 files (one per line)')
     argparser.add_argument('-F', '--files', metavar='FILE', nargs='+',
@@ -32,7 +33,7 @@ if __name__ == '__main__':
         help='Spatial resolution of output GEDI EASE 2.0 grid (m)')
     argparser.add_argument('-i', '--index', metavar='INT', type=int, default=None,
         help='Dateset index to grid for 2D datasets')
-    argparser.add_argument('-g', '--gedi_domain', metavar='FLOAT', type=float, default=52,
+    argparser.add_argument('-G', '--gedi_domain', metavar='FLOAT', type=float, default=52,
         help='Latitudinal extent of the GEDI domain for EASE 2.0 grids (degrees)')
     argparser.add_argument('-s', '--sensitivity', metavar='FLOAT', type=float, default=0.9,
         help='Additional GEDI beam sensitivity threshold filter to apply')
@@ -65,12 +66,14 @@ if __name__ == '__main__':
         nbands = len(args.quantiles) + 1
 
     # Setup the GEDI grid
-    gedi_grid = gedigrid.GEDIGrid(args.output_file, profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
+    gedi_grid = gedigrid.GEDIGrid(profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
     if args.reference_image:
-        gedi_grid.init_grid_from_reference(args.reference_image, count=nbands, dtype='float32', 
-            nodata=-9999)
+        gedi_grid.init_grid_from_reference(args.reference_image, count=nbands,
+            dtype='float32', nodata=-9999)
+    elif args.grid_config:
+        gedi_grid.init_grid_from_config(args.grid_config, count=nbands)
     else:
-        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution, 
+        gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution,
             gedi_domain=args.gedi_domain, count=nbands, dtype='float32', nodata=-9999)
 
     # Loop through each h5 file and beam
@@ -82,18 +85,12 @@ if __name__ == '__main__':
             for beam in h5file.beams:
                 longitude, latitude = h5file.get_coordinates(beam)
                 dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
-                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity, 
+                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity,
                     nonull=args.dataset, index=args.index)
-                gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality], 
+                gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality],
                     func=args.userfunc, quantiles=args.quantiles, step=0.1)
             h5file.close_h5()
 
     # Finalize and write the result
-    if args.userfunc == 'grid_moments':
-        gedi_grid.outgrid = userfunctions.finalize_grid_moments(gedi_grid.outgrid,
-            gedi_grid.profile, gain=1, offset=0)
-    elif args.userfunc == 'grid_quantiles':
-        gedi_grid.outgrid = userfunctions.finalize_grid_quantiles(gedi_grid.outgrid,
-            gedi_grid.profile, gain=1, offset=0)
-    gedi_grid.write_grid()
-
+    gedi_grid.finalize_grid(gain=1, offset=0, func=args.userfunc)
+    gedi_grid.write_grid(args.output_file)
