@@ -149,10 +149,12 @@ class GEDIH5File(LidarFile):
         nshots = self.fid[beam]['shot_number'].shape[0]
         return nshots
 
-    def open_h5(self):
+    def open_h5(self, short_name=None):
         self.fid = h5py.File(self.filename, 'r')
         gedi_product_names = ('GEDI_L1A','GEDI_L1B','GEDI_L2A','GEDI_L2B','GEDI_L4A')
-        if self.fid.attrs['short_name'] not in gedi_product_names:
+        if not short_name:
+            short_name = self.fid.attrs['short_name']
+        if short_name not in gedi_product_names:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('BEAM')]
 
@@ -247,7 +249,7 @@ class GEDIH5File(LidarFile):
         out_waveforms = numpy.zeros(out_shape, dtype=waveforms.dtype)
         start_indices -= numpy.min(start_indices)
         out_waveforms = self._waveform_1d_to_2d(start_indices, counts, waveforms, out_waveforms)
-        
+
         if elevation:
             elev_bin0 = self.fid[beam+'/geolocation/elevation_bin0'][start:finish]
             elev_lastbin = self.fid[beam+'/geolocation/elevation_lastbin'][start:finish]
@@ -298,7 +300,7 @@ class GEDIH5File(LidarFile):
             finish = len(self.fid[beam+'/rx_sample_start_index'])
         else:
             pass
-        
+
         start_indices = self.fid[beam+'/rx_sample_start_index'][start:finish] - 1
         counts = self.fid[beam+'/rx_sample_count'][start:finish]
         pgap_profile = self.fid[beam+'/pgap_theta_z'][start_indices[0]:(start_indices[-1]+counts[-1])]
@@ -307,7 +309,7 @@ class GEDIH5File(LidarFile):
         if minlength:
             max_count = max(minlength, max_count)
         out_shape = (max_count, counts.shape[0])
-        
+
         pgap = self.fid[beam+'/pgap_theta'][start:finish]
         out_pgap_profile = numpy.broadcast_to(pgap, (out_shape)).copy()
         out_pgap_profile[0:start_offset,:] = 1.0
@@ -343,7 +345,7 @@ class GEDIH5File(LidarFile):
         # Find indices to extract
         if subset:
             product_id = self.get_product_id()
-            idx_extract = userfunctions.get_gedi_geom_indices(group, product_id, subset)
+            idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
 
             # Use h5py simple indexing - faster
             if not numpy.any(idx_extract):
@@ -354,7 +356,7 @@ class GEDIH5File(LidarFile):
             idx_subset = tmp - idx_start
         else:
             idx_start = 0
-            idx_finish = self.get_nrecords()
+            idx_finish = self.get_nrecords(beam)
             idx_subset = None
 
         # Function to extract datasets for selected shots
@@ -546,10 +548,10 @@ class GEDIH5File(LidarFile):
                     index = kwargs['index']
                     tmp = self.fid[beam][name][:,index]
                 else:
-                    tmp = self.fid[beam][name][()]                
+                    tmp = self.fid[beam][name][()]
                 quality_flag &= (tmp != -9999)
         else:
-            quality_flag = numpy.ones(self.get_nrecords(), dtype=numpy.bool)
+            quality_flag = numpy.ones(self.get_nrecords(beam), dtype=numpy.bool)
         return quality_flag
 
     def get_utc_time(self, beam):
@@ -742,7 +744,7 @@ class ATL03H5File(LidarFile):
             idx_subset = tmp - idx_start
         else:
             idx_start = 0
-            idx_finish = self.get_nrecords()
+            idx_finish = self.get_nrecords(beam)
             idx_subset = None
 
         # Function to extract datasets for selected shots
@@ -949,7 +951,7 @@ class ATL08H5File(LidarFile):
             idx_subset = tmp - idx_start
         else:
             idx_start = 0
-            idx_finish = self.get_nrecords()
+            idx_finish = self.get_nrecords(beam)
             idx_subset = None
 
         # Function to extract datasets for selected shots
@@ -989,3 +991,260 @@ class ATL08H5File(LidarFile):
         outdata = pandas.concat(datasets, axis=1)
 
         return outdata
+
+
+
+
+class LVISH5File(LidarFile):
+    """
+    Generic object for I/O of LVIS .h5 data
+
+    Parameters
+    ----------
+    filename: str
+        Pathname to LVIS .h5 file
+
+    """
+    def __init__(self, filename):
+        self.filename = filename
+        self.filename_pattern = re.compile(r'LVIS(C|F)(\d{1})(A|B)_()_(\d{4})_R(\d{4})_(\d{6})_\.h5')
+
+    def is_valid(self):
+        return h5py.is_hdf5(self.filename)
+
+    def is_valid_filename(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return True
+        else:
+            return False
+
+    def get_product_id(self):
+        m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+        if m:
+            return 'LVIS{}{:d}{}'.format( m.group(1), m.group(2), m.group(3) )
+        else:
+            raise ValueError('invalid LVIS filename: "{}"'.format(self.filename))
+
+    def get_nrecords(self):
+        nshots = self.fid['SHOTNUMBER'].shape[0]
+        return nshots
+
+    def open_h5(self, short_name=None):
+        self.fid = h5py.File(self.filename, 'r')
+        lvis_product_names = ('L1B HDF','L2B HDF')
+        if not short_name:
+            short_name = self.fid.attrs['short_name'][0].decode('utf-8')
+        if short_name not in lvis_product_names:
+            raise GEDIPyDriverError
+        val, cnt = numpy.unique(self.fid['LFID'], return_counts=True)
+        self.lfid = list(val)
+        self.counts = list(cnt)
+
+    def close_h5(self):
+        self.fid.close()
+        self.lfid = None
+        self.counts = None
+
+    def read_shots(self, start=0, finish=None, dataset_list=[]):
+        """
+        Read data of LVIS .h5 files into numpy.ndarray
+
+        Parameters
+        ----------
+        start: int
+            start of np.ndarray like slicing, Default=0
+        finish: int/ None
+            end of np.ndarray like slicing, Default=None
+        dataset_list: list of str
+            List of LVIS h5 dataset paths
+
+        Returns
+        -------
+        data: numpy.ndarray
+            numpy.ndarray of read data
+        """
+        if not finish:
+            finish = self.get_nrecords()
+
+        dtype_list = []
+        for name in dataset_list:
+            if isinstance(self.fid[name], h5py.Dataset):
+                s = self.fid[name].dtype.str
+                if self.fid[name].ndim > 1:
+                    t = self.fid[name].shape[1:]
+                    dtype_list.append((str(name), s, t))
+                else:
+                    dtype_list.append((str(name), s))
+
+        num_records = finish - start
+        data = numpy.empty(num_records, dtype=dtype_list)
+        for item in dtype_list:
+            name = item[0]
+            if isinstance(self.fid[name], h5py.Dataset):
+                data[name] = self.fid[name][start:finish,...]
+            else:
+                print('{} not found'.format(name))
+
+        return data
+
+    def read_tx_waveform(self, start=0, finish=None, minlength=None):
+        if not finish:
+            finish = self.get_nrecords()
+
+        out_waveforms = self.fid['TXWAVE'][start:finish,:]
+
+        if minlength:
+            if minlength > self.fid['TXWAVE'].shape[1]:
+                out_shape = (finish - start, minlength)
+                out_waveforms = numpy.broadcast_to(out_waveforms, (out_shape)).copy()
+
+        return out_waveforms
+
+    def read_rx_waveform(self, start=0, finish=None, minlength=None, elevation=False):
+        if not finish:
+            finish = self.get_nrecords()
+
+        out_waveforms = self.fid['RXWAVE'][start:finish,:]
+
+        if minlength:
+            if minlength > self.fid['RXWAVE'].shape[1]:
+                out_shape = (finish - start, minlength)
+                out_waveforms = numpy.broadcast_to(out_waveforms, (out_shape)).copy()
+
+        if elevation:
+            elev_bin0 = self.fid['Z0'][start:finish]
+            elev_lastbin = self.fid['Z1023'][start:finish]
+            v = (elev_bin0 - elev_lastbin) / (out_waveforms.shape[1] - 1)
+
+            bin_dist = numpy.expand_dims(numpy.arange(out_waveforms.shape[1]), axis=1)
+            out_elevation = (numpy.expand_dims(elev_bin0, axis=0) -
+                numpy.repeat(bin_dist,v.shape[0],axis=1) * v)
+
+            return out_waveforms, out_elevation
+        else:
+            return out_waveforms
+
+    def copy_attrs(self, output_fid, group):
+        for key in self.fid[group].attrs.keys():
+            if key not in output_fid[group].attrs.keys():
+                output_fid[group].attrs[key] = self.fid[group].attrs[key]
+
+    def export_shots(self, subset, dataset_list=[]):
+        # Find indices to extract
+        if subset:
+            product_id = self.get_product_id()
+            idx_extract = userfunctions.get_geom_indices(self.fid, product_id, subset)
+
+            # Use h5py simple indexing - faster
+            if not numpy.any(idx_extract):
+                return
+            tmp, = numpy.nonzero(idx_extract)
+            idx_start = numpy.min(tmp)
+            idx_finish = numpy.max(tmp) + 1
+            idx_subset = tmp - idx_start
+        else:
+            idx_start = 0
+            idx_finish = self.get_nrecords()
+            idx_subset = None
+
+        # Function to extract datasets for selected shots
+        nshots = self.get_nrecords()
+        def _get_selected_shots(name, obj):
+            if isinstance(obj, h5py.Dataset):
+                try:
+                    shot_axis = obj.shape.index(nshots)
+                    if obj.ndim == 1:
+                        arr = obj[idx_start:idx_finish]
+                        colnames = [name]
+                    elif obj.ndim == 2:
+                        if shot_axis == 0:
+                            arr = obj[idx_start:idx_finish,...]
+                        else:
+                            arr = numpy.transpose(obj[...,idx_start:idx_finish])
+                        colnames = ['{}_{:03d}'.format(name,i) for i in range(obj.shape[shot_axis-1])]
+                    else:
+                        print('{} is not a 1D or 2D dataset'.format(name))
+                        raise
+                    if idx_subset is not None:
+                        df = pandas.DataFrame(data=arr[idx_subset,...], columns=colnames)
+                    else:
+                        df = pandas.DataFrame(data=arr, columns=colnames)
+                    datasets.append(df)
+                except ValueError:
+                    print('{} is not a footprint level dataset'.format(name))
+                    raise
+                except:
+                    print("Unexpected error:", sys.exc_info()[0])
+                    raise
+
+        # Extract and combine the data for extracted shots
+        datasets = []
+        for name in dataset_list:
+            out_name = os.path.basename(name)
+            _get_selected_shots(out_name, self.fid[name])
+        outdata = pandas.concat(datasets, axis=1)
+
+        return outdata
+
+    def copy_shots(self, output_fid, subset, geom=False, dataset_list=[]):
+        nshots = self.get_nrecords()
+        product_id = self.get_product_id()
+
+        # Find indices to extract
+        if geom:
+            idx_extract = userfunctions.get_geom_indices(self.fid, product_id, subset)
+        else:
+            shot_numbers = self.fid['SHOTNUMBER'][()]
+            idx_extract = userfunctions.get_shot_indices(subset, shot_numbers)
+
+        # Use h5py simple indexing - faster
+        if not numpy.any(idx_extract):
+            return
+        tmp, = numpy.nonzero(idx_extract)
+        idx_start = numpy.min(tmp)
+        idx_finish = numpy.max(tmp) + 1
+        idx_subset = tmp - idx_start
+
+        def _copy_selected_shots(name, obj):
+            if isinstance(obj, h5py.Group):
+                if name not in output_fid:
+                    output_fid.create_group(name)
+            elif isinstance(obj, h5py.Dataset):
+                # Copy selected shot numbers for most datasets
+                if 0 not in obj.shape:
+                    if nshots in obj.shape:
+                        shot_axis = obj.shape.index(nshots)
+                        if shot_axis == 0:
+                            tmp = obj[idx_start:idx_finish,...]
+                            append_to_h5_dataset(name, output_fid,
+                                                 tmp[idx_subset,...],
+                                                 shot_axis=shot_axis)
+                        else:
+                            tmp = obj[...,idx_start:idx_finish]
+                            append_to_h5_dataset(name, output_fid, tmp[...,idx_subset],
+                                                 shot_axis=shot_axis)
+                    else:
+                        # ancillary / short_term datasets
+                        append_to_h5_dataset(name, output_fid, obj)
+
+        if len(dataset_list) > 0:
+            for name in dataset_list:
+                _copy_selected_shots(name, self.fid[name])
+        else:
+            self.fid.visititems(copy_selected_shots)
+
+    def get_coordinates(self):
+        longitude = self.fid[GEDIPY_REFERENCE_COORDS[self.get_product_id()]['x']][()]
+        latitude = self.fid[GEDIPY_REFERENCE_COORDS[self.get_product_id()]['y']][()]
+        return longitude, latitude
+
+    def get_dataset(self, name, index=None):
+        if self.fid[name].ndim > 1:
+            if index:
+                dataset = self.fid[name][:,index]
+            else:
+                dataset = self.fid[name][()]
+        else:
+            dataset = self.fid[name][()]
+        return dataset
