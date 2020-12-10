@@ -337,14 +337,15 @@ class GEDIH5File(LidarFile):
             if key not in output_fid[group].attrs.keys():
                 output_fid[group].attrs[key] = self.fid[group].attrs[key]
 
-    def export_shots(self, beam, subset, dataset_list=[]):
+    def export_shots(self, beam, subset, dataset_list=[], product_id=None):
         # Get the group information
         group = self.fid[beam]
         nshots = group['shot_number'].shape[0]
+        if not product_id:
+            product_id = self.get_product_id()
 
         # Find indices to extract
         if subset:
-            product_id = self.get_product_id()
             idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
 
             # Use h5py simple indexing - faster
@@ -398,10 +399,11 @@ class GEDIH5File(LidarFile):
         return outdata
 
     def copy_shots(self, output_fid, beam, subset, output_2d, geom=False,
-                   dataset_list=[]):
+                   dataset_list=[], product_id=None):
         group = self.fid[beam]
         nshots = group['shot_number'].size
-        product_id = self.get_product_id()
+        if not product_id:
+            product_id = self.get_product_id()
 
         # Find indices to extract
         if geom:
@@ -535,8 +537,10 @@ class GEDIH5File(LidarFile):
             append_to_h5_dataset(start_indices_name, out_group, out_start_indices)
             append_to_h5_dataset(counts_name, out_group, counts)
 
-    def get_quality_flag(self, beam, **kwargs):
-        quality_name = GEDIPY_REFERENCE_DATASETS[self.get_product_id()]['quality']
+    def get_quality_flag(self, beam, product_id=None, **kwargs):
+        if not product_id:
+            product_id = self.get_product_id()
+        quality_name = GEDIPY_REFERENCE_DATASETS[product_id]['quality']
         if quality_name:
             quality_flag = (self.fid[beam][quality_name][()] == 1)
             if 'sensitivity' in kwargs:
@@ -544,8 +548,8 @@ class GEDIH5File(LidarFile):
                 quality_flag &= (beam_sensitivity >= kwargs['sensitivity'])
             if 'nonull' in kwargs:
                 name = kwargs['nonull']
-                if 'index' in kwargs:
-                    index = kwargs['index']
+                index = kwargs.get('index')
+                if index:
                     tmp = self.fid[beam][name][:,index]
                 else:
                     tmp = self.fid[beam][name][()]
@@ -560,9 +564,11 @@ class GEDIH5File(LidarFile):
         utc_time = [start_utc + datetime.timedelta(seconds=s) for s in delta_time]
         return numpy.array(utc_time)
 
-    def get_coordinates(self, beam):
-        longitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[self.get_product_id()]['x']][()]
-        latitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[self.get_product_id()]['y']][()]
+    def get_coordinates(self, beam, product_id=None):
+        if not product_id:
+            product_id = self.get_product_id()
+        longitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[product_id]['x']][()]
+        latitude = self.fid[beam][GEDIPY_REFERENCE_COORDS[product_id]['y']][()]
         return longitude, latitude
 
     def get_dataset(self, beam, name, index=None):
