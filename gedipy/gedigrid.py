@@ -103,7 +103,7 @@ class GEDIGrid:
         self.outgrid = numpy.zeros((self.profile['count'], self.profile['height'], self.profile['width']),
             dtype=self.profile['dtype'])
 
-    def init_gedi_ease2_grid(self, bbox=None, resolution=1000, gedi_domain=52, **kwargs):
+    def init_gedi_ease2_grid(self, bbox=None, tile=None, tilesize=72, resolution=1000, gedi_domain=52, **kwargs):
         """
         Prepare the output GEDI grid
         """
@@ -136,6 +136,15 @@ class GEDIGrid:
 
             longrid = longrid[xmask]
             latgrid = latgrid[ymask]
+        elif tile:
+            ncol = nrow = int(tilesize / rkm)
+            xmin = GEDIPY_EASE2_PAR['xmin'] + (tile[0] - 1) * binsize[0] * tilesize
+            ymax = GEDIPY_EASE2_PAR['ymax'] - (tile[1] - 1) * binsize[1] * tilesize
+
+            c0 = (tile[0] - 1) * ncol 
+            r0 = (tile[1] - 1) * nrow
+            longrid = longrid[r0:r0+nrow]
+            latgrid = latgrid[c0:c0+ncol]
         else:
             xmin = GEDIPY_EASE2_PAR['xmin']
             ymax = GEDIPY_EASE2_PAR['ymax']
@@ -198,6 +207,10 @@ class GEDIGrid:
                 userfunctions.grid_moments(x, y, dataset[valid], self.outgrid,
                     self.profile['transform'][2], self.profile['transform'][5],
                     self.profile['transform'][0], -self.profile['transform'][4])
+            elif func == 'grid_counts':
+                userfunctions.grid_counts(x, y, dataset[valid], self.outgrid,
+                    self.profile['transform'][2], self.profile['transform'][5],
+                    self.profile['transform'][0], -self.profile['transform'][4])
             elif func == 'grid_quantiles':
                 userfunctions.grid_quantiles(x, y, dataset[valid], self.outgrid,
                     self.profile['transform'][2], self.profile['transform'][5],
@@ -216,7 +229,7 @@ class GEDIGrid:
 
     def finalize_grid(self, gain=1, offset=0, func='grid_moments'):
         """
-        Retrieve the mean, standard deviation, skewness, kurtosis and scale outputs
+        Finalize statistics and scale and o
         """
         if func == 'grid_moments':
 
@@ -269,3 +282,8 @@ class GEDIGrid:
             numpy.add(self.outgrid, offset, out=self.outgrid,
                 where=self.outgrid != self.profile['nodata'])
             self.outgrid = self.outgrid.astype(self.profile['dtype'])
+
+        if hasattr(self, 'gedimask'):
+            self.outgrid = numpy.where(self.gedimask, self.outgrid, self.profile['nodata'])
+
+

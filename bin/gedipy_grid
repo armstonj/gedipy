@@ -29,7 +29,7 @@ if __name__ == '__main__':
     argparser.add_argument('-F', '--files', metavar='FILE', nargs='+',
         help='H5 file paths (space delimited)')
     argparser.add_argument('-R', '--resolution', metavar='INT', type=int, default=1000,
-        choices=[100,500,1000,3000,9000,18000,24000],
+        choices=[100,500,1000,3000,9000,18000,24000,72000],
         help='Spatial resolution of output GEDI EASE 2.0 grid (m)')
     argparser.add_argument('-i', '--index', metavar='INT', type=int, default=None,
         help='Dateset index to grid for 2D datasets')
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     argparser.add_argument('-b', '--bbox', metavar='FLOAT', nargs=4, type=float,
         help='Geographic coordinate bounding box to clip the grid to [minx maxy maxx miny]')
     argparser.add_argument('-u','--userfunc', metavar='STR', type=str, default='grid_moments',
-        choices=['grid_moments','grid_quantiles'],
+        choices=['grid_moments','grid_quantiles','grid_counts'],
         help='Running grid statistics to compute (grid_quantiles is experimental)')
     argparser.add_argument('-q', '--quantiles', metavar='FLOAT', nargs='+', type=float,
         default=[0.0,0.25,0.5,0.75,1.0],
@@ -62,21 +62,32 @@ if __name__ == '__main__':
     # Select the gridding algorithm parameters
     if args.userfunc == 'grid_moments':
         nbands = 5
+        dtype = 'float32'
+        nodata = -9999
     elif args.userfunc == 'grid_quantiles':
         nbands = len(args.quantiles) + 1
+        dtype = 'float32'
+        nodata = -9999
+    elif args.userfunc == 'grid_counts':
+        nbands = 3
+        dtype = 'uint16'
+        nodata = numpy.iinfo(numpy.uint16).max
+        args.dataset = 'shot_number'
     else:
         nbands = 1
+        dtype = 'float32'
+        nodata = -9999
 
     # Setup the GEDI grid
     gedi_grid = gedigrid.GEDIGrid(profile=gedigrid.GEDIPY_RIO_DEFAULT_PROFILE)
     if args.reference_image:
         gedi_grid.init_grid_from_reference(args.reference_image, count=nbands,
-            dtype='float32', nodata=-9999)
+            dtype=dtype, nodata=nodata)
     elif args.grid_config:
         gedi_grid.init_grid_from_config(args.grid_config, count=nbands)
     else:
         gedi_grid.init_gedi_ease2_grid(bbox=args.bbox, resolution=args.resolution,
-            gedi_domain=args.gedi_domain, count=nbands, dtype='float32', nodata=-9999)
+            gedi_domain=args.gedi_domain, count=nbands, dtype=dtype, nodata=nodata)
 
     # Loop through each h5 file and beam
     number_of_files = len(file_database.file_by_orbit)

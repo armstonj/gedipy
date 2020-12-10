@@ -83,6 +83,38 @@ def get_polygon_from_bbox(bbox):
 
 
 @njit
+def _add_counts(col, row, cnt, band, outimage):
+    """
+    Numba functions to add counts to an existing image
+    """
+    for i in range(cnt.shape[0]):
+        if (row[i] >= 0) & (col[i] >= 0) & (row[i] < outimage.shape[1]) & (col[i] < outimage.shape[2]):
+            outimage[band, int(row[i]), int(col[i])] += cnt[i]
+
+
+def grid_counts(x, y, shotnumber, outimage, xmin, ymax, xbinsize, ybinsize):
+    """
+    Function to count number of shots, tracks and orbits on a grid
+    outimage band 1 = Number of shots
+    outimage band 2 = Number of tracks
+    outimage band 3 = Number of orbits
+    """
+    col = numpy.int16((x - xmin) / xbinsize)
+    row = numpy.int16((ymax - y) / ybinsize)
+    
+    cnt = numpy.ones(shotnumber.shape[0], dtype=numpy.uint16)
+    _add_counts(row, col, cnt, 0, outimage)
+
+    track = shotnumber // 100000000000
+    val,cnt = numpy.unique([col,row,track], return_counts=True, axis=1)
+    _add_counts(val[0,:], val[1,:], cnt, 1, outimage)
+
+    orbit = shotnumber // 10000000000000
+    val,cnt = numpy.unique([col,row,orbit], return_counts=True, axis=1)    
+    _add_counts(val[0,:], val[1,:], cnt, 2, outimage)
+
+
+@njit
 def grid_moments(x, y, z, outimage, xmin, ymax, xbinsize, ybinsize):
     """
     Numba function to calculate running mean and variance using Welfords algorithm
