@@ -186,9 +186,6 @@ class GEDIGrid:
             dtype=self.profile['dtype'])
 
     def write_grid(self, filename, descriptions=None):
-        if hasattr(self, 'gedimask'):
-            self.outgrid = numpy.where(self.gedimask, self.outgrid, self.profile['nodata'])
-
         with rasterio.Env():
             with rasterio.open(filename, 'w', **self.profile) as dst:
                 dst.write(self.outgrid)
