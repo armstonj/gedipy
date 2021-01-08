@@ -45,6 +45,10 @@ if __name__ == '__main__':
     argparser.add_argument('-q', '--quantiles', metavar='FLOAT', nargs='+', type=float,
         default=[0.0,0.25,0.5,0.75,1.0],
         help='Quantiles to compute for the grid_quantiles userfunc')
+    argparser.add_argument('-n','--night', default=False, action='store_true', 
+        help='Only use night observations')
+    argparser.add_argument('-p','--power', default=False, action='store_true', 
+        help='Only use power beams')
     args = argparser.parse_args()
 
     # Load file database
@@ -69,7 +73,7 @@ if __name__ == '__main__':
         dtype = 'float32'
         nodata = -9999
     elif args.userfunc == 'grid_counts':
-        nbands = 3
+        nbands = 2
         dtype = 'uint16'
         nodata = numpy.iinfo(numpy.uint16).max
         args.dataset = 'shot_number'
@@ -99,7 +103,7 @@ if __name__ == '__main__':
                 longitude, latitude = h5file.get_coordinates(beam)
                 dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
                 quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity,
-                    nonull=args.dataset, index=args.index)
+                    night=args.night, power=args.power, nonull=args.dataset, index=args.index)
                 gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality],
                     func=args.userfunc, quantiles=args.quantiles, step=0.1)
             h5file.close_h5()

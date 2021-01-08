@@ -94,10 +94,9 @@ def _add_counts(col, row, band, outimage):
 
 def grid_counts(x, y, shotnumber, outimage, xmin, ymax, xbinsize, ybinsize):
     """
-    Function to count number of shots, tracks and orbits on a grid
+    Function to count number of shots and tracks on a grid
     outimage band 1 = Number of shots
     outimage band 2 = Number of tracks
-    outimage band 3 = Number of orbits
     """
     col = numpy.int16((x - xmin) / xbinsize)
     row = numpy.int16((ymax - y) / ybinsize)
@@ -107,10 +106,6 @@ def grid_counts(x, y, shotnumber, outimage, xmin, ymax, xbinsize, ybinsize):
     track = shotnumber // 100000000000
     val = numpy.unique([col,row,track], axis=1)
     _add_counts(val[0,:], val[1,:], 1, outimage)
-
-    orbit = shotnumber // 10000000000000
-    val = numpy.unique([col,row,orbit], axis=1)    
-    _add_counts(val[0,:], val[1,:], 2, outimage)
 
 
 @njit
