@@ -21,14 +21,14 @@ GEDIPY_REFERENCE_COORDS = {'1A': {'x': 'geolocation/longitude_bin0', 'y': 'geolo
                            'LVISC1B': {'x': 'LON0', 'y': 'LAT0', 't': 'TIME'},
                            'LVISC2B': {'x': 'GLON', 'y': 'GLAT', 't': 'TIME'}}
 
-GEDIPY_REFERENCE_DATASETS = {'1A': {'quality': None},
-                             '1B': {'quality': None},
-                             '2A': {'quality': 'quality_flag'},
-                             '2B': {'quality': 'l2b_quality_flag'},
-                             'ATL03': {'quality': None},
-                             'ATL08': {'quality': None},
-                             'LVISC1B': {'quality': None},
-                             'LVISC2B': {'quality': 'quality'}}
+GEDIPY_REFERENCE_DATASETS = {'1A': {'quality': None, 'solar_elevation': 'geolocation/solar_elevation'},
+                             '1B': {'quality': None, 'solar_elevation': 'geolocation/solar_elevation'},
+                             '2A': {'quality': 'quality_flag', 'solar_elevation': 'solar_elevation'},
+                             '2B': {'quality': 'l2b_quality_flag', 'solar_elevation': 'geolocation/solar_elevation'},
+                             'ATL03': {'quality': None, 'solar_elevation': 'geolocation/solar_elevation'},
+                             'ATL08': {'quality': None, 'solar_elevation': 'land_segments/solar_elevation'},
+                             'LVISC1B': {'quality': None, 'solar_elevation': None},
+                             'LVISC2B': {'quality': 'quality', 'solar_elevation': None}}
 
 GEDIPY_GEDI_BEAMS = {'BEAM0000':0, 'BEAM0001':1, 'BEAM0010':2, 'BEAM0011':3,
                      'BEAM0101':5, 'BEAM0110':6, 'BEAM1000':8, 'BEAM1011':11}

@@ -558,9 +558,9 @@ class GEDIH5File(LidarFile):
         else:
             quality_flag = numpy.ones(self.get_nrecords(beam), dtype=numpy.bool)
         
-        night_name = GEDIPY_REFERENCE_DATASETS[product_id]['night']
-        if night_name:
-            quality_flag &= (self.fid[beam][night_name][()] < 0)
+        solar_elevation = GEDIPY_REFERENCE_DATASETS[product_id]['solar_elevation']
+        if solar_elevation:
+            quality_flag &= (self.fid[beam][solar_elevation][()] < 0)
 
         if power:
             quality_flag &= (self.fid[beam+'/beam'][()] > 3)
@@ -951,7 +951,7 @@ class ATL08H5File(LidarFile):
                         quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
         
         if night:
-            quality_flag &= (self.fid[beam+'/land_segments/night_flag'][()] == 1)
+            quality_flag &= (self.fid[beam+'/land_segments/solar_elevation'][()] < 0)
 
         if power:
             beam_type = self.fid[beam].attrs['atlas_beam_type'].decode('utf-8')
