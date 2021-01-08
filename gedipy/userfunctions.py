@@ -83,13 +83,13 @@ def get_polygon_from_bbox(bbox):
 
 
 @njit
-def _add_counts(col, row, cnt, band, outimage):
+def _add_counts(col, row, band, outimage):
     """
     Numba functions to add counts to an existing image
     """
-    for i in range(cnt.shape[0]):
+    for i in range(col.shape[0]):
         if (row[i] >= 0) & (col[i] >= 0) & (row[i] < outimage.shape[1]) & (col[i] < outimage.shape[2]):
-            outimage[band, int(row[i]), int(col[i])] += cnt[i]
+            outimage[band, int(row[i]), int(col[i])] += 1
 
 
 def grid_counts(x, y, shotnumber, outimage, xmin, ymax, xbinsize, ybinsize):
@@ -101,17 +101,16 @@ def grid_counts(x, y, shotnumber, outimage, xmin, ymax, xbinsize, ybinsize):
     """
     col = numpy.int16((x - xmin) / xbinsize)
     row = numpy.int16((ymax - y) / ybinsize)
-    
-    cnt = numpy.ones(shotnumber.shape[0], dtype=numpy.uint16)
-    _add_counts(row, col, cnt, 0, outimage)
+     
+    _add_counts(col, row, 0, outimage)
 
     track = shotnumber // 100000000000
-    val,cnt = numpy.unique([col,row,track], return_counts=True, axis=1)
-    _add_counts(val[0,:], val[1,:], cnt, 1, outimage)
+    val = numpy.unique([col,row,track], axis=1)
+    _add_counts(val[0,:], val[1,:], 1, outimage)
 
     orbit = shotnumber // 10000000000000
-    val,cnt = numpy.unique([col,row,orbit], return_counts=True, axis=1)    
-    _add_counts(val[0,:], val[1,:], cnt, 2, outimage)
+    val = numpy.unique([col,row,orbit], axis=1)    
+    _add_counts(val[0,:], val[1,:], 2, outimage)
 
 
 @njit
