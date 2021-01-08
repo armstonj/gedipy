@@ -705,7 +705,7 @@ class ATL03H5File(LidarFile):
                         quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
          
         if night:
-            quality_flag &= self.fid[beam+'/geolocation/solar_elevation'][()] < 0)
+            quality_flag &= (self.fid[beam+'/geolocation/solar_elevation'][()] < 0)
 
         if power:
             beam_type = self.fid[beam].attrs['atlas_beam_type'].decode('utf-8')
