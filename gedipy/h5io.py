@@ -537,9 +537,10 @@ class GEDIH5File(LidarFile):
             append_to_h5_dataset(start_indices_name, out_group, out_start_indices)
             append_to_h5_dataset(counts_name, out_group, counts)
 
-    def get_quality_flag(self, beam, product_id=None, **kwargs):
+    def get_quality_flag(self, beam, product_id=None, night=False, power=False, **kwargs):
         if not product_id:
             product_id = self.get_product_id()
+
         quality_name = GEDIPY_REFERENCE_DATASETS[product_id]['quality']
         if quality_name:
             quality_flag = (self.fid[beam][quality_name][()] == 1)
@@ -556,6 +557,14 @@ class GEDIH5File(LidarFile):
                 quality_flag &= (tmp != -9999)
         else:
             quality_flag = numpy.ones(self.get_nrecords(beam), dtype=numpy.bool)
+        
+        night_name = GEDIPY_REFERENCE_DATASETS[product_id]['night']
+        if night_name:
+            quality_flag &= (self.fid[beam][night_name][()] < 0)
+
+        if power:
+            quality_flag &= (self.fid[beam+'/beam'][()] > 3)
+
         return quality_flag
 
     def get_utc_time(self, beam):
@@ -681,8 +690,9 @@ class ATL03H5File(LidarFile):
         else:
             raise ValueError('invalid ATL03 filename: "{}"'.format(self.filename))
 
-    def get_quality_flag(self, beam, **kwargs):
+    def get_quality_flag(self, beam, night=False, power=False, **kwargs):
         quality_flag = self.fid[beam+'/heights/signal_conf_ph'][:,0]
+        
         if len(kwargs) > 0:
             for k in kwargs:
                 name = '{}/{}'.format(beam,k)
@@ -693,6 +703,15 @@ class ATL03H5File(LidarFile):
                         quality_flag &= (dataset < numpy.iinfo(dataset.dtype).max)
                     else:
                         quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
+         
+        if night:
+            quality_flag &= self.fid[beam+'/geolocation/solar_elevation'][()] < 0)
+
+        if power:
+            beam_type = self.fid[beam].attrs['atlas_beam_type'].decode('utf-8')
+            if beam_type != 'strong':
+                quality_flag &= False
+
         return quality_flag
 
     def get_coordinates(self, beam, ht=False):
@@ -907,7 +926,7 @@ class ATL08H5File(LidarFile):
         night_flag = (self.fid[beam+'/land_segments/night_flag'][()] == 1)
         return night_flag
 
-    def get_quality_flag(self, beam, **kwargs):
+    def get_quality_flag(self, beam, night=False, power=False, **kwargs):
         """
         Other quality flag options to consider:
         quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 0)
@@ -919,6 +938,7 @@ class ATL08H5File(LidarFile):
         """
         quality_flag = (self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'][()] <
             numpy.finfo(self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'].dtype).max)
+        
         if len(kwargs) > 0:
             for k in kwargs:
                 name = '{}/{}'.format(beam,k)
@@ -929,6 +949,15 @@ class ATL08H5File(LidarFile):
                         quality_flag &= (dataset < numpy.iinfo(dataset.dtype).max)
                     else:
                         quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
+        
+        if night:
+            quality_flag &= (self.fid[beam+'/land_segments/night_flag'][()] == 1)
+
+        if power:
+            beam_type = self.fid[beam].attrs['atlas_beam_type'].decode('utf-8')
+            if beam_type != 'strong':
+                quality_flag &= False
+
         return quality_flag
 
     def get_dataset(self, beam, name, index=None):
