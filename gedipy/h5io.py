@@ -12,7 +12,7 @@ import numpy
 import pandas
 import datetime
 
-from numba import jit
+from numba import njit
 from numba import prange
 
 from pygeos import box
@@ -22,6 +22,7 @@ from pygeos import points
 from . import userfunctions
 from . import GEDIPY_REFERENCE_COORDS
 from . import GEDIPY_REFERENCE_DATASETS
+from . import GEDIPY_MODE_SELECTION_OPTS
 
 
 def append_to_h5_dataset(name, group, new_data, shot_axis=0,
@@ -153,7 +154,8 @@ class GEDIH5File(LidarFile):
         self.fid = h5py.File(self.filename, 'r')
         gedi_product_names = ('GEDI_L1A','GEDI_L1B','GEDI_L2A','GEDI_L2B','GEDI_L4A')
         if not short_name:
-            short_name = self.fid.attrs['short_name']
+            if 'short_name' in self.fid.attrs:
+                short_name = self.fid.attrs['short_name']
         if short_name not in gedi_product_names:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('BEAM')]
@@ -207,7 +209,7 @@ class GEDIH5File(LidarFile):
         return data
 
     @staticmethod
-    @jit(nopython=True, parallel=True)
+    @njit
     def _waveform_1d_to_2d(start_indices, counts, data, out_data, start_offset=0):
         for i in prange(start_indices.shape[0]):
             for j in prange(counts[i]):
@@ -345,7 +347,7 @@ class GEDIH5File(LidarFile):
             product_id = self.get_product_id()
 
         # Find indices to extract
-        if subset:
+        if subset is not None:
             idx_extract = userfunctions.get_geom_indices(group, product_id, subset)
 
             # Use h5py simple indexing - faster
@@ -544,6 +546,11 @@ class GEDIH5File(LidarFile):
         quality_name = GEDIPY_REFERENCE_DATASETS[product_id]['quality']
         if quality_name:
             quality_flag = (self.fid[beam][quality_name][()] == 1)
+            if 'degrade' in kwargs:
+                if  kwargs['degrade']:
+                    degrade_name = GEDIPY_REFERENCE_DATASETS[product_id]['degrade']
+                    degrade_flag = (self.fid[beam][degrade_name][()] == 0)
+                    quality_flag &= degrade_flag
             if 'sensitivity' in kwargs:
                 beam_sensitivity = self.fid[beam+'/sensitivity'][()]
                 quality_flag &= (beam_sensitivity >= kwargs['sensitivity'])
@@ -589,6 +596,112 @@ class GEDIH5File(LidarFile):
         else:
             dataset = self.fid[beam][name][()]
         return dataset
+
+    @staticmethod
+    @njit
+    def _select_mode(mean_noise, modelocs, modeamp, localen, iwave, botloc, back_threshold,
+                     nummodes, maxamp, elevs_allmodes, selected_mode, mode_flag, delta_z, pulse_sep_thresh,
+                     cumulative_energy_minimum, energy_thresh, amp_thresh, cumulative_energy_thresh,
+                     botlocdist_limit1, ampval_limit2, botlocdist_limit2, ampval_limit3, botlocdist_limit3):
+        for i in range(selected_mode.shape[0]):
+            elev_lowestmode = elevs_allmodes[i,selected_mode[i]]
+            for j in range(nummodes[i]-1, -1, -1):
+                # Don't bother with this mode if zcross and botloc are
+                # within a laser pulse width of each other OR amp is <
+                # thresh OR the cumulative waveform is < value
+                if ( (botloc[i]-modelocs[i,j] < pulse_sep_thresh) |
+                     (modeamp[i,j] < back_threshold[i]-mean_noise[i]) |
+                     (iwave[i,j] < cumulative_energy_minimum) ):
+                    continue
+                if ( (localen[i,j] > energy_thresh) |
+                     (modeamp[i,j] > amp_thresh) |
+                     (iwave[i,j] > cumulative_energy_thresh) ):
+                    # it's ok, quit moving left
+                    selected_mode[i] = j
+                    delta_z[i] = elevs_allmodes[i,j] - elev_lowestmode
+                    mode_flag[i] = 3
+                    break
+
+            if (mode_flag[i] == 1):
+                # Unless that point is too close to botloc, in which case
+                # we're going to move 1 left
+                for j in range(nummodes[i]-1, -1, -1):
+                    if (modelocs[i,j]-botloc[i] > pulse_sep_thresh):
+                        selected_mode[i] = j
+                        delta_z[i] = elevs_allmodes[i,j] - elev_lowestmode
+                        mode_flag[i] = 2
+                        break
+
+            # Case if selected mode is more than limitdist from botloc, going to flag it
+            botloclimit = botlocdist_limit1
+            zcross = modelocs[i,selected_mode[i]]
+            if (maxamp[i] > ampval_limit2):
+                botloclimit = botlocdist_limit2
+            if (maxamp[i] > ampval_limit3):
+                botloclimit = botlocdist_limit3
+            if (botloc[i]-zcross > botloclimit):
+                mode_flag[i] = 4
+
+    def apply_mode_selection(self, beam, algorithm_setting, mode_opts=GEDIPY_MODE_SELECTION_OPTS):
+        shot_idx, = numpy.nonzero( (self.fid[beam+'/rx_processing_a{:d}/rx_nummodes'.format(algorithm_setting)][()] > 1) &
+                                   (self.fid[beam+'/rx_assess/rx_maxamp'][()] > 8*self.fid[beam+'/rx_assess/sd_corrected'][()]) )
+
+        mean_noise = self.fid[beam+'/rx_processing_a{:d}/mean'.format(algorithm_setting)][()][shot_idx]
+        modelocs = self.fid[beam+'/rx_processing_a{:d}/rx_modelocs'.format(algorithm_setting)][()][shot_idx,:]
+        modeamp = self.fid[beam+'/rx_processing_a{:d}/rx_modeamps'.format(algorithm_setting)][()][shot_idx,:] - mean_noise[:,numpy.newaxis]
+        localen = self.fid[beam+'/rx_processing_a{:d}/rx_modelocalenergy'.format(algorithm_setting)][()][shot_idx,:]
+        iwave = self.fid[beam+'/rx_processing_a{:d}/rx_iwaveamps'.format(algorithm_setting)][()][shot_idx,:] * 100
+        botloc = self.fid[beam+'/rx_processing_a{:d}/botloc'.format(algorithm_setting)][()][shot_idx]
+        back_threshold = self.fid[beam+'/rx_processing_a{:d}/back_threshold'.format(algorithm_setting)][()][shot_idx]
+        nummodes = self.fid[beam+'/rx_processing_a{:d}/rx_nummodes'.format(algorithm_setting)][()][shot_idx]
+        maxamp = self.fid[beam+'/rx_assess/rx_maxamp'][()][shot_idx]
+        elevs_allmodes = self.fid[beam+'/geolocation/elevs_allmodes_a{:d}'.format(algorithm_setting)][()][shot_idx,:]
+
+        selected_mode = self.fid[beam+'/rx_processing_a{:d}/selected_mode'.format(algorithm_setting)][()]
+        selected_mode_tmp = selected_mode[shot_idx]
+        mode_flag_tmp = numpy.ones(selected_mode_tmp.shape[0], dtype=numpy.uint8)
+        delta_z_tmp = numpy.zeros(selected_mode_tmp.shape[0], dtype=numpy.float32)
+
+        self._select_mode(mean_noise, modelocs, modeamp, localen, iwave, botloc, back_threshold,
+                         nummodes, maxamp, elevs_allmodes, selected_mode_tmp, mode_flag_tmp, delta_z_tmp,
+                         mode_opts['pulse_sep_thresh'], mode_opts['cumulative_energy_minimum'],
+                         mode_opts['energy_thresh'], mode_opts['amp_thresh'],
+                         mode_opts['cumulative_energy_thresh'], mode_opts['botlocdist_limit1'],
+                         mode_opts['ampval_limit2'], mode_opts['botlocdist_limit2'],
+                         mode_opts['ampval_limit3'], mode_opts['botlocdist_limit3'])
+
+        mode_flag = numpy.zeros(self.fid[beam+'/shot_number'].shape[0], dtype=numpy.uint8)
+        delta_z = numpy.zeros(self.fid[beam+'/shot_number'].shape[0], dtype=numpy.float32)
+
+        selected_mode[shot_idx] = selected_mode_tmp
+        mode_flag[shot_idx] = mode_flag_tmp
+        delta_z[shot_idx] = delta_z_tmp
+
+        return selected_mode,mode_flag,delta_z
+
+    def predict_algorithm_setting_selection(self, beam, pft, region, elev_lowestmode_a10, selected_mode_flag_a10):
+        elev_a1 = self.fid[beam+'/geolocation/elev_lowestmode_a1'][()]
+        elev_a2 = self.fid[beam+'/geolocation/elev_lowestmode_a2'][()]
+        elev_a5 = self.fid[beam+'/geolocation/elev_lowestmode_a5'][()]
+        rx_maxamp = self.fid[beam+'/rx_assess/rx_maxamp'][()]
+
+        selected_algorithm = numpy.ones(elev_a1.shape[0], dtype=numpy.uint8)
+
+        idx = (((pft == 2) | (pft == 1) | (pft == 3) | (pft == 4)) &
+              (rx_maxamp < 400) & (elev_a2 < elev_a1))
+        selected_algorithm[idx] = 2
+
+        ebt_idx = (pft == 2) & ((region == 4) | (region == 5))
+
+        z_flag = elev_lowestmode_a10 < (elev_a1-2)
+
+        idx = ebt_idx & z_flag
+        selected_algorithm[idx] = 10
+
+        idx = ebt_idx & z_flag & (selected_mode_flag_a10 == 4)
+        selected_algorithm[idx] = 5
+
+        return selected_algorithm
 
 
 class ATL03H5File(LidarFile):
@@ -666,7 +779,10 @@ class ATL03H5File(LidarFile):
 
     def open_h5(self):
         self.fid = h5py.File(self.filename, 'r')
-        if self.fid.attrs['short_name'] != b'ATL03':
+        if 'short_name' in self.fid.attrs:
+            if self.fid.attrs['short_name'] != b'ATL03':
+                raise GEDIPyDriverError
+        else:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
@@ -886,7 +1002,10 @@ class ATL08H5File(LidarFile):
 
     def open_h5(self):
         self.fid = h5py.File(self.filename, 'r')
-        if self.fid.attrs['short_name'] != b'ATL08':
+        if 'short_name' in self.fid.attrs:
+            if self.fid.attrs['short_name'] != b'ATL08':
+                raise GEDIPyDriverError
+        else:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
 
@@ -1069,7 +1188,10 @@ class LVISH5File(LidarFile):
         self.fid = h5py.File(self.filename, 'r')
         lvis_product_names = ('L1B HDF','L2B HDF')
         if not short_name:
-            short_name = self.fid.attrs['short_name'][0].decode('utf-8')
+            if 'short_name' in self.fid.attrs:
+                short_name = self.fid.attrs['short_name'][0].decode('utf-8')
+            else:
+                raise GEDIPyDriverError
         if short_name not in lvis_product_names:
             raise GEDIPyDriverError
         val, cnt = numpy.unique(self.fid['LFID'], return_counts=True)
