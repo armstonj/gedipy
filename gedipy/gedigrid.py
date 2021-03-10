@@ -7,6 +7,7 @@ Generation of gridded GEDI data products
 
 import numpy
 import json
+from numba import njit
 from pyproj import Transformer
 
 import rasterio
@@ -283,4 +284,35 @@ class GEDIGrid:
         if hasattr(self, 'gedimask'):
             self.outgrid = numpy.where(self.gedimask, self.outgrid, self.profile['nodata'])
 
+
+class AncillaryGrid:
+    def __init__(self, grid_file, band=1):
+        self.grid_file = grid_file
+        self.band = band
+        self.load_grid()
+
+    def load_grid(self):
+        with rasterio.open(self.grid_file, 'r') as src:
+            self.grid_data = src.read(self.band)
+            self.xMin = src.profile['transform'][0]
+            self.yMax = src.profile['transform'][3]
+            self.binSize = src.profile['transform'][1]
+
+    @staticmethod
+    @njit
+    def _extract_pixels(x, y, valid, grid_data, out_data, xMin, yMax, binSize):
+        for i in prange(valid.shape[0]):
+            if valid[i] == 1:
+                col = int((x[i] - xMin) / binSize)
+                row = int((yMax - y[i]) / binSize)
+                if (row >= 0) & (col >= 0) & (row < grid_data.shape[0]) & (col < grid_data.shape[1]):
+                    out_data[i] = grid_data[row, col]
+
+    def read_samples(self, x, y, valid, dtype=None):
+        if dtype is None:
+            dtype = self.grid_data.dtype.name
+        values = numpy.full(valid.shape[0], NODATA_VALUES[dtype], dtype=dtype)
+        self._extract_pixels(x, y, numpy.uint8(valid), self.grid_data, values,
+                             self.xMin, self.yMax, self.binSize)
+        return values
 
