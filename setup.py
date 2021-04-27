@@ -34,28 +34,28 @@ ipath = os.path.join(numdir, numpy.get_include())
 include_dirs.append(ipath)
 include_dirs.append('src')
 
-class lazy_cythonize(list):
-    def __init__(self, callback):
-        self._list, self.callback = None, callback
-    def c_list(self):
-        if self._list is None: self._list = self.callback()
-        return self._list
-    def __iter__(self):
-        for e in self.c_list(): yield e
-    def __getitem__(self, ii): return self.c_list()[ii]
-    def __len__(self): return len(self.c_list())
+#class lazy_cythonize(list):
+#    def __init__(self, callback):
+#        self._list, self.callback = None, callback
+#    def c_list(self):
+#        if self._list is None: self._list = self.callback()
+#        return self._list
+#    def __iter__(self):
+#        for e in self.c_list(): yield e
+#    def __getitem__(self, ii): return self.c_list()[ii]
+#    def __len__(self): return len(self.c_list())
 
-def extensions():
-    from Cython.Build import cythonize
-    extensions = [
-      Extension(
-         "kmpfit",
-         ["src/kmpfit.pyx", "src/mpfit.c"],
-         include_dirs=include_dirs
-      ),
-
-      ]
-    return cythonize(extensions)
+#def extensions():
+#    from Cython.Build import cythonize
+#    extensions = [
+#      Extension(
+#         "kmpfit",
+#         ["src/kmpfit.pyx", "src/mpfit.c"],
+#         include_dirs=include_dirs
+#      ),
+#
+#      ]
+#    return cythonize(extensions)
 
 setup(name='gedipy',
       version=gedipy.GEDIPY_VERSION,
@@ -63,7 +63,7 @@ setup(name='gedipy',
       packages=['gedipy'],
       scripts=scriptList,
       license='LICENSE.txt', 
-      ext_modules=lazy_cythonize(extensions),
+#      ext_modules=lazy_cythonize(extensions),
       url='http://github.com/armstonj/gedipy',
       classifiers=['Intended Audience :: Developers',
           'Operating System :: OS Independent',
