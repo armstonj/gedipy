@@ -231,6 +231,7 @@ class GEDIGrid:
         """
         if func == 'grid_moments':
 
+            print(self.outgrid[0].max())
             # Initialize the output
             tmpshape = (4, self.outgrid.shape[1], self.outgrid.shape[2])
             tmpgrid = numpy.empty(tmpshape, dtype=self.outgrid.dtype)

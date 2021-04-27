@@ -726,7 +726,12 @@ class ATL03H5File(LidarFile):
         if m:
             return True
         else:
-            return False
+            self.filename_pattern = re.compile(r'(ATL\d{2})_30m_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
+            m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+            if m:
+                return True
+            else:
+                return False
 
     def get_product_id(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
@@ -939,7 +944,7 @@ class ATL08H5File(LidarFile):
     """
     def __init__(self, filename):
         self.filename = filename
-        self.filename_pattern = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
+        self.filename_pattern = re.compile(r'(ATL\d{2})_((?:30m_|))(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_(\d{3})_(\d{2})\.h5')
 
     def is_valid(self):
         return h5py.is_hdf5(self.filename)
@@ -961,42 +966,42 @@ class ATL08H5File(LidarFile):
     def get_datetime(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return datetime.datetime(m.group(2), m.group(3), m.group(4), m.group(5), m.group(6), m.group(7))
+            return datetime.datetime(m.group(3), m.group(4), m.group(5), m.group(6), m.group(7), m.group(8))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_rgt_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(8))
+            return int(m.group(9))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_cycle_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(9))
+            return int(m.group(10))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_segment_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(10))
+            return int(m.group(11))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_version_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(11))
+            return int(m.group(12))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
     def get_revision_number(self):
         m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
         if m:
-            return int(m.group(12))
+            return int(m.group(13))
         else:
             raise ValueError('invalid ATL08 filename: "{}"'.format(self.filename))
 
@@ -1005,6 +1010,12 @@ class ATL08H5File(LidarFile):
         if 'short_name' in self.fid.attrs:
             if self.fid.attrs['short_name'] != b'ATL08':
                 raise GEDIPyDriverError
+            m = self.filename_pattern.fullmatch(os.path.basename(self.filename))
+            if len(m.group(2)) > 0:
+                print('Processing will use 30m segments')
+                self.subgroup = 'land_segments/30m_segment'
+            else:
+                self.subgroup = 'land_segments'
         else:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
@@ -1037,46 +1048,46 @@ class ATL08H5File(LidarFile):
         return segment_id
 
     def get_coordinates(self, beam):
-        longitude = self.fid[beam+'/land_segments/longitude'][()]
-        latitude = self.fid[beam+'/land_segments/latitude'][()]
+        longitude = self.fid[beam+'/'+self.subgroup+'/longitude'][()]
+        latitude = self.fid[beam+'/'+self.subgroup+'/latitude'][()]
         return longitude, latitude
 
     def get_night_flag(self, beam):
-        night_flag = (self.fid[beam+'/land_segments/night_flag'][()] == 1)
+        night_flag = (self.fid[beam+'/'+self.subgroup+'/night_flag'][()] == 1)
         return night_flag
 
     def get_quality_flag(self, beam, night=False, power=False, **kwargs):
         """
         Other quality flag options to consider:
-        quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/terrain_flg'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/segment_watermask'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/cloud_flag_atm'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/dem_removal_flag'][()] == 0)
-        quality_flag &= (self.fid[beam+'/land_segments/ph_removal_flag'][()] == 0)
+        quality_flag = (self.fid[beam+'/'subgroup+'/msw_flag'][()] == 0)
+        quality_flag &= (self.fid[beam+'/'subgroup+'/terrain_flg'][()] == 0)
+        quality_flag &= (self.fid[beam+'/'subgroup+'/segment_watermask'][()] == 0)
+        quality_flag &= (self.fid[beam+'/'subgroup+'/cloud_flag_atm'][()] == 0)
+        quality_flag &= (self.fid[beam+'/'subgroup+'/dem_removal_flag'][()] == 0)
+        quality_flag &= (self.fid[beam+'/'subgroup+'/ph_removal_flag'][()] == 0)
         """
-        quality_flag = (self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'][()] <
-            numpy.finfo(self.fid[beam+'/land_segments/canopy/h_canopy_uncertainty'].dtype).max)
+        quality_flag = numpy.ones(self.fid[beam+'/'+self.subgroup+'/delta_time'].shape, dtype=numpy.bool)
         
-        if len(kwargs) > 0:
-            for k in kwargs:
-                name = '{}/{}'.format(beam,k)
+        if 'nonull' in kwargs:
+            if not isinstance(kwargs['nonull'], list):
+                kwargs['nonull'] = list(kwargs['nonull'])
+            for name in kwargs['nonull']:
+                name = '{}/{}'.format(beam,kwargs['nonull'])
                 if name in self.fid:
                     dataset = self.fid[name][()]
-                    quality_flag &= (dataset == kwargs[k])
                     if numpy.issubdtype(dataset.dtype, numpy.integer):
                         quality_flag &= (dataset < numpy.iinfo(dataset.dtype).max)
                     else:
                         quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
         
         if night:
-            quality_flag &= (self.fid[beam+'/land_segments/solar_elevation'][()] < 0)
-
+            quality_flag &= (self.fid[beam+'/'+self.subgroup+'/solar_elevation'][()] < 0)
+        
         if power:
             beam_type = self.fid[beam].attrs['atlas_beam_type'].decode('utf-8')
             if beam_type != 'strong':
                 quality_flag &= False
-
+        
         return quality_flag
 
     def get_dataset(self, beam, name, index=None):
@@ -1086,10 +1097,10 @@ class ATL08H5File(LidarFile):
             dataset = self.fid[beam][name][()]
         return dataset
 
-    def export_shots(self, beam, subset, dataset_list=[]):
+    def export_shots(self, beam, subset, dataset_list=[], **kwargs):
         # Get the group information
         group = self.fid[beam]
-        nshots = group['land_segments/delta_time'].shape[0]
+        nshots = group[self.subgroup+'/delta_time'].shape[0]
 
         # Find indices to extract
         if subset:
@@ -1145,8 +1156,6 @@ class ATL08H5File(LidarFile):
         outdata = pandas.concat(datasets, axis=1)
 
         return outdata
-
-
 
 
 class LVISH5File(LidarFile):
