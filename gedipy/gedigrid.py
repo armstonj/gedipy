@@ -108,8 +108,8 @@ class GEDIGrid:
         """
         Prepare the output GEDI grid
         """
-        if resolution not in (100,500,1000,3000,9000,18000,24000):
-            print('Only 100 m, 500 m, 1 km, 3 km, 9 km, 18 km, and 24 km resolutions accepted')
+        if resolution not in (100,500,1000,3000,9000,18000,24000,72000):
+            print('Only 100 m, 500 m, 1 km, 3 km, 9 km, 18 km, 24 and 72 km resolutions accepted')
             exit(1)
 
         if resolution < 1000:
@@ -214,6 +214,10 @@ class GEDIGrid:
                     self.profile['transform'][2], self.profile['transform'][5],
                     self.profile['transform'][0], -self.profile['transform'][4],
                     kwargs['quantiles'], kwargs['step'])
+            elif not isinstance(func, str):
+                func(x, y, dataset[valid], self.outgrid,
+                    self.profile['transform'][2], self.profile['transform'][5],
+                    self.profile['transform'][0], -self.profile['transform'][4])
             else:
                 x_edge = numpy.sort(self.profile['transform'][2] + numpy.arange(self.profile['width'] + 1) *
                     self.profile['transform'][0])
@@ -231,7 +235,6 @@ class GEDIGrid:
         """
         if func == 'grid_moments':
 
-            print(self.outgrid[0].max())
             # Initialize the output
             tmpshape = (4, self.outgrid.shape[1], self.outgrid.shape[2])
             tmpgrid = numpy.empty(tmpshape, dtype=self.outgrid.dtype)
