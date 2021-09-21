@@ -120,7 +120,15 @@ class GEDIH5File(LidarFile):
     """
     def __init__(self, filename):
         self.filename = filename
-        self.filename_pattern = re.compile(r'GEDI0(1|2|4)_(A|B)_(\d{13})_O(\d{5})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})\.h5')
+        self.filename_pattern = re.compile(r'GEDI0(1|2|4)_(A|B)_(\d{13})_O(\d{5})_(\d{2})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})_V002((?:_10algs|))\.h5')
+        if self.is_valid_filename():
+            self.release = 2
+        else:
+            self.filename_pattern = re.compile(r'GEDI0(1|2|4)_(A|B)_(\d{13})_O(\d{5})_T(\d{5})_(\d{2})_(\d{3})_(\d{2})\.h5')
+            if self.is_valid_filename():
+                self.release = 1
+            else:
+                raise ValueError('invalid GEDI filename: "{}"'.format(self.filename))
 
     def is_valid(self):
         return h5py.is_hdf5(self.filename)
@@ -553,7 +561,7 @@ class GEDIH5File(LidarFile):
                     quality_flag &= degrade_flag
             if 'sensitivity' in kwargs:
                 beam_sensitivity = self.fid[beam+'/sensitivity'][()]
-                quality_flag &= (beam_sensitivity >= kwargs['sensitivity'])
+                quality_flag &= (beam_sensitivity > kwargs['sensitivity'])
             if 'nonull' in kwargs:
                 name = kwargs['nonull']
                 index = kwargs.get('index')
@@ -565,8 +573,8 @@ class GEDIH5File(LidarFile):
         else:
             quality_flag = numpy.ones(self.get_nrecords(beam), dtype=numpy.bool)
         
-        solar_elevation = GEDIPY_REFERENCE_DATASETS[product_id]['solar_elevation']
-        if solar_elevation:
+        if night:
+            solar_elevation = GEDIPY_REFERENCE_DATASETS[product_id]['solar_elevation']
             quality_flag &= (self.fid[beam][solar_elevation][()] < 0)
 
         if power:
