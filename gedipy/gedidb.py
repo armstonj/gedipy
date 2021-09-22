@@ -32,7 +32,8 @@ class GEDIShotNumber(ShotNumber):
 	where
 	OOOOO: Orbit number
 	BB: Beam number
-	FFF: Minor frame number (0-241)
+	FFF: Release 1 - Minor frame number (0-241)
+             Release 2 - Granule ID (1-4)
 	NNNNNNNN: Shot number within orbit
 
     If a packet is dropped (never received on the ground), NNNNNNNN will not
@@ -52,6 +53,9 @@ class GEDIShotNumber(ShotNumber):
 
     def get_frame(self):
         return (self.shot_number % 100000000000) // 100000000
+
+    def get_granule(self):
+        return self.get_frame()
 
     def get_index(self):
         return self.shot_number % 100000000
@@ -88,7 +92,9 @@ class FileDatabase:
         if h5file:
             if h5file.is_valid():
                 orbit = h5file.get_orbit_number()
-                self.file_by_orbit[orbit] = h5file
+                if orbit not in self.file_by_orbit:
+                    self.file_by_orbit[orbit] = []
+                self.file_by_orbit[orbit].append(h5file)
             else:
                 print('{} is not a valid H5 file'.format(filename))
 
