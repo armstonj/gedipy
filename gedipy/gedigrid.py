@@ -8,6 +8,7 @@ Generation of gridded GEDI data products
 import numpy
 import json
 from numba import njit
+import pyproj
 from pyproj import Transformer
 
 import rasterio
@@ -195,11 +196,11 @@ class GEDIGrid:
                     for i in range(self.outgrid.shape[0]):
                         dst.set_band_description(i+1, descriptions[i])
 
-
     def add_data(self, longitude, latitude, dataset, func='grid_moments', **kwargs):
         valid = ~numpy.isnan(longitude) & ~numpy.isnan(latitude) & ~numpy.isnan(dataset)
         if numpy.any(valid):
-            transformer = Transformer.from_crs('epsg:4326', str(self.profile['crs']), always_xy=True)
+            to_crs = pyproj.crs.CRS.from_user_input(self.profile['crs'])
+            transformer = Transformer.from_crs('epsg:4326', to_crs, always_xy=True)
             x,y = transformer.transform(longitude[valid], latitude[valid])
             if func == 'grid_moments':
                 userfunctions.grid_moments(x, y, dataset[valid], self.outgrid,
@@ -227,7 +228,6 @@ class GEDIGrid:
                     statistic=func, bins=[x_edge, y_edge])
                 tmp = numpy.expand_dims(tmp.T[::-1,...], axis=0)
                 self.outgrid = numpy.where(numpy.isnan(tmp), self.profile['nodata'], tmp)
-
 
     def finalize_grid(self, gain=1, offset=0, func='grid_moments'):
         """

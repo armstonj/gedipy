@@ -94,19 +94,18 @@ if __name__ == '__main__':
             gedi_domain=args.gedi_domain, count=nbands, dtype=dtype, nodata=nodata)
 
     # Loop through each h5 file and beam
-    number_of_files = len(file_database.file_by_orbit)
     for orbit in tqdm(file_database.file_by_orbit):
-        h5file = file_database.get_file(orbit)
-        if h5file:
-            h5file.open_h5()
-            for beam in h5file.beams:
-                longitude, latitude = h5file.get_coordinates(beam)
-                dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
-                quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity,
-                    night=args.night, power=args.power, nonull=args.dataset, index=args.index)
-                gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality],
-                    func=args.userfunc, quantiles=args.quantiles, step=0.1)
-            h5file.close_h5()
+        for h5file in file_database.get_file(orbit):
+            if h5file:
+                h5file.open_h5()
+                for beam in h5file.beams:
+                    longitude, latitude = h5file.get_coordinates(beam)
+                    dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
+                    quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity,
+                        night=args.night, power=args.power, nonull=args.dataset, index=args.index)
+                    gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality],
+                        func=args.userfunc, quantiles=args.quantiles, step=0.1)
+                h5file.close_h5()
 
     # Finalize and write the result
     gedi_grid.finalize_grid(gain=1, offset=0, func=args.userfunc)
