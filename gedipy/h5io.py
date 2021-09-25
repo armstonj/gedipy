@@ -555,7 +555,7 @@ class GEDIH5File(LidarFile):
         if quality_name:
             quality_flag = (self.fid[beam][quality_name][()] == 1)
             if 'degrade' in kwargs:
-                if  kwargs['degrade']:
+                if kwargs['degrade']:
                     degrade_name = GEDIPY_REFERENCE_DATASETS[product_id]['degrade']
                     degrade_flag = (self.fid[beam][degrade_name][()] == 0)
                     quality_flag &= degrade_flag
@@ -570,6 +570,12 @@ class GEDIH5File(LidarFile):
                 else:
                     tmp = self.fid[beam][name][()]
                 quality_flag &= (tmp != -9999)
+            if 'leafon' in kwargs:
+                if kwargs['leafon']:
+                    leafoff_name = 'land_cover_data/leaf_off_flag'
+                    if leafoff_name in self.fid[beam]:
+                        leafon_flag = ~(self.fid[beam+'/'+leafoff_name][()] == 0)
+                        quality_flag &= leafon_flag
         else:
             quality_flag = numpy.ones(self.get_nrecords(beam), dtype=numpy.bool)
         

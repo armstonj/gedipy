@@ -29,7 +29,7 @@ if __name__ == '__main__':
     argparser.add_argument('-F', '--files', metavar='FILE', nargs='+',
         help='H5 file paths (space delimited)')
     argparser.add_argument('-R', '--resolution', metavar='INT', type=int, default=1000,
-        choices=[100,500,1000,3000,9000,18000,24000,72000],
+        choices=[100,500,1000,2000,3000,6000,9000,18000,24000,72000],
         help='Spatial resolution of output GEDI EASE 2.0 grid (m)')
     argparser.add_argument('-i', '--index', metavar='INT', type=int, default=None,
         help='Dateset index to grid for 2D datasets')
@@ -49,6 +49,10 @@ if __name__ == '__main__':
         help='Only use night observations')
     argparser.add_argument('-p','--power', default=False, action='store_true', 
         help='Only use power beams')
+    argparser.add_argument('-l','--leafon', default=False, action='store_true',
+        help='Only use leaf-on shots')
+    argparser.add_argument('-D','--degarde', default=False, action='store_true',
+        help='Exclude shots with degraded geolocation')
     args = argparser.parse_args()
 
     # Load file database
@@ -102,7 +106,8 @@ if __name__ == '__main__':
                     longitude, latitude = h5file.get_coordinates(beam)
                     dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
                     quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity,
-                        night=args.night, power=args.power, nonull=args.dataset, index=args.index)
+                        night=args.night, power=args.power, leafon=args.leafon, 
+                        degrade=args.degrade, nonull=args.dataset, index=args.index)
                     gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality],
                         func=args.userfunc, quantiles=args.quantiles, step=0.1)
                 h5file.close_h5()
