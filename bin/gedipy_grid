@@ -51,7 +51,7 @@ if __name__ == '__main__':
         help='Only use power beams')
     argparser.add_argument('-l','--leafon', default=False, action='store_true',
         help='Only use leaf-on shots')
-    argparser.add_argument('-D','--degarde', default=False, action='store_true',
+    argparser.add_argument('-D','--degrade', default=False, action='store_true',
         help='Exclude shots with degraded geolocation')
     args = argparser.parse_args()
 
