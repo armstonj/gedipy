@@ -109,8 +109,8 @@ class GEDIGrid:
         """
         Prepare the output GEDI grid
         """
-        if resolution not in (100,500,1000,3000,9000,18000,24000,72000):
-            print('Only 100 m, 500 m, 1 km, 3 km, 9 km, 18 km, 24 and 72 km resolutions accepted')
+        if resolution not in (100,500,1000,2000,3000,6000,9000,18000,24000,72000):
+            print('Only 100 m, 500 m, 1 km, 2 km, 3 km, 6 km, 9 km, 18 km, 24 km and 72 km resolutions accepted')
             exit(1)
 
         if resolution < 1000:
