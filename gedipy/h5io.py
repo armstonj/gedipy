@@ -574,8 +574,14 @@ class GEDIH5File(LidarFile):
                 if kwargs['leafon']:
                     leafoff_name = 'land_cover_data/leaf_off_flag'
                     if leafoff_name in self.fid[beam]:
-                        leafon_flag = ~(self.fid[beam+'/'+leafoff_name][()] == 0)
+                        leafon_flag = ~(self.fid[beam+'/'+leafoff_name][()] == 1)
                         quality_flag &= leafon_flag
+            if 'landsurface' in kwargs:
+                if kwargs['landsurface']:
+                    pft_name = 'land_cover_data/pft_class'
+                    if pft_name in self.fid[beam]:
+                        landsurface_flag = (self.fid[beam+'/'+pft_name][()] > 0)
+                        quality_flag &= landsurface_flag
         else:
             quality_flag = numpy.ones(self.get_nrecords(beam), dtype=numpy.bool)
         

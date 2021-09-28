@@ -53,6 +53,8 @@ if __name__ == '__main__':
         help='Only use leaf-on shots')
     argparser.add_argument('-D','--degrade', default=False, action='store_true',
         help='Exclude shots with degraded geolocation')
+    argparser.add_argument('-L','--landsurface', default=False, action='store_true',
+        help='Exclude shots that are not landsurface')
     args = argparser.parse_args()
 
     # Load file database
@@ -107,7 +109,8 @@ if __name__ == '__main__':
                     dataset = h5file.get_dataset(beam, args.dataset, index=args.index)
                     quality = h5file.get_quality_flag(beam, sensitivity=args.sensitivity,
                         night=args.night, power=args.power, leafon=args.leafon, 
-                        degrade=args.degrade, nonull=args.dataset, index=args.index)
+                        degrade=args.degrade, landsurface=args.landsurface, 
+                        nonull=args.dataset, index=args.index)
                     gedi_grid.add_data(longitude[quality], latitude[quality], dataset[quality],
                         func=args.userfunc, quantiles=args.quantiles, step=0.1)
                 h5file.close_h5()
