@@ -1,7 +1,10 @@
 # GEDIPy
-Python tools for simplified processing of NASA's Global Ecosystem Dynamics Investigation (GEDI) H5 data products.
+Python tools for processing of NASA's Global Ecosystem Dynamics Investigation (GEDI) H5 data products. 
 
-Support is also provided for NASA's ICESat-2 and LVIS missions for purposes of fusion and cal/val.
+Drivers for for NASA's ICESat-2 and LVIS missions are included for purposes of fusion and cal/val.
+
+This code is not "official" mission code and is not used in the generation of any GEDI products.
+It's not actively updated, or well documented, but may have snippets or notebooks that are of interest to some.
 
 Install GEDIPy directly from GitHub:
 ```
