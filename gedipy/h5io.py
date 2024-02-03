@@ -12,6 +12,8 @@ import numpy
 import pandas
 import datetime
 
+from pyproj import Transformer
+
 from numba import njit
 from numba import prange
 
@@ -877,7 +879,6 @@ class ATL03H5File(LidarFile):
             atl08_fid.get_photon_segment_id(beam), side='left')
         atl08_ph_index_beg = ph_index_beg[valid_idx][idx] - 1
 
-        atl08_ph_index = atl08_fid.get_photon_index(beam)
         idx = atl08_ph_index_beg + atl08_fid.get_photon_index(beam)
         atl03_class = numpy.zeros(self.get_nrecords(beam), dtype=numpy.uint8)
         atl03_class[idx] = atl08_fid.get_photon_class(beam)
@@ -1039,6 +1040,7 @@ class ATL08H5File(LidarFile):
         else:
             raise GEDIPyDriverError
         self.beams = [beam for beam in self.fid if beam.startswith('gt')]
+        self.count = [self.fid[b+'/land_segments/delta_time'].shape[0] for b in self.beams]
 
     def close_h5(self):
         self.fid.close()
@@ -1076,39 +1078,146 @@ class ATL08H5File(LidarFile):
         night_flag = (self.fid[beam+'/'+self.subgroup+'/night_flag'][()] == 1)
         return night_flag
 
-    def get_quality_flag(self, beam, night=False, power=False, **kwargs):
+    def get_quality_flag(self, night=False, power=False, h_canopy_uncertainty=None, n_canopy_photons=None, 
+        use_20m_segments=False, **kwargs):
         """
         Other quality flag options to consider:
-        quality_flag = (self.fid[beam+'/'subgroup+'/msw_flag'][()] == 0)
-        quality_flag &= (self.fid[beam+'/'subgroup+'/terrain_flg'][()] == 0)
-        quality_flag &= (self.fid[beam+'/'subgroup+'/segment_watermask'][()] == 0)
-        quality_flag &= (self.fid[beam+'/'subgroup+'/cloud_flag_atm'][()] == 0)
-        quality_flag &= (self.fid[beam+'/'subgroup+'/dem_removal_flag'][()] == 0)
-        quality_flag &= (self.fid[beam+'/'subgroup+'/ph_removal_flag'][()] == 0)
+        quality_flag = (self.fid[beam+'/land_segments/msw_flag'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/terrain_flg'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/segment_watermask'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/cloud_flag_atm'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/dem_removal_flag'][()] == 0)
+        quality_flag &= (self.fid[beam+'/land_segments/ph_removal_flag'][()] == 0)
         """
-        quality_flag = numpy.ones(self.fid[beam+'/'+self.subgroup+'/delta_time'].shape, dtype=numpy.bool)
-        
+        tmp = self.get_data('land_segments/latitude', use_20m_segments=use_20m_segments)
+        if numpy.issubdtype(tmp.dtype, numpy.integer):
+            quality_flag = tmp != numpy.iinfo(tmp.dtype).max
+        else:        
+            quality_flag = tmp != numpy.finfo(tmp.dtype).max
+
         if 'nonull' in kwargs:
             if not isinstance(kwargs['nonull'], list):
-                kwargs['nonull'] = list(kwargs['nonull'])
+                kwargs['nonull'] = [kwargs['nonull']]
             for name in kwargs['nonull']:
-                name = '{}/{}'.format(beam,kwargs['nonull'])
-                if name in self.fid:
-                    dataset = self.fid[name][()]
-                    if numpy.issubdtype(dataset.dtype, numpy.integer):
-                        quality_flag &= (dataset < numpy.iinfo(dataset.dtype).max)
-                    else:
-                        quality_flag &= (dataset < numpy.finfo(dataset.dtype).max)
-        
+                tmp = self.get_data(name, use_20m_segments=use_20m_segments)
+                if numpy.issubdtype(tmp.dtype, numpy.integer):
+                    quality_flag &= (tmp < numpy.iinfo(tmp.dtype).max)
+                else:
+                    quality_flag &= (tmp < numpy.finfo(tmp.dtype).max)
+
+        if h_canopy_uncertainty is not None:
+            tmp = self.get_data('/land_segments/canopy/h_canopy_uncertainty', use_20m_segments=use_20m_segments)
+            quality_flag &= (tmp < h_canopy_uncertainty)
+
+        if n_canopy_photons is not None:
+            n_ca_photons = self.get_data('/land_segments/canopy/n_ca_photons', use_20m_segments=use_20m_segments)
+            quality_flag &= n_ca_photons < n_canopy_photons
+
         if night:
-            quality_flag &= (self.fid[beam+'/'+self.subgroup+'/solar_elevation'][()] < 0)
+            quality_flag &= (self.get_data('/land_segments/solar_elevation', use_20m_segments=use_20m_segments) < 0)
         
         if power:
-            beam_type = self.fid[beam].attrs['atlas_beam_type'].decode('utf-8')
-            if beam_type != 'strong':
-                quality_flag &= False
+            sc_orient = self.get_data('sc_orient', use_20m_segments=use_20m_segments)
+            beam = self.get_data('beam', use_20m_segments=use_20m_segments)
+            power = ( (sc_orient == 0) & numpy.isin(beam, [1,3,5]) ) | ( (sc_orient == 1) & numpy.isin(beam, [2,4,6]) )
+            quality_flag &= power
         
         return quality_flag
+
+    def get_utc_time(self, use_20m_segments=False):
+        delta_time = self.get_data('land_segments/delta_time', use_20m_segments=use_20m_segments)
+        start_utc = datetime.datetime(2018, 1, 1)
+        utc_time = [start_utc + datetime.timedelta(seconds=s) for s in delta_time[:,0]]
+        return numpy.array(utc_time)
+
+    def get_ease2_coords(self, use_20m_segments=False):
+        longitude = self.get_data('land_segments/longitude', use_20m_segments=use_20m_segments)
+        latitude = self.get_data('land_segments/latitude', use_20m_segments=use_20m_segments)
+        transformer = Transformer.from_crs('epsg:4326', 'epsg:6933', always_xy=True)
+        x,y = transformer.transform(longitude, latitude)
+        return x,y
+
+    def get_track_id(self, use_20m_segments=False):
+        cycle = self.get_data('cycle', use_20m_segments=use_20m_segments)
+        orbit = self.get_data('orbit', use_20m_segments=use_20m_segments)
+        beam_id = self.get_data('beam', use_20m_segments=use_20m_segments)
+        track = (cycle * 1000000) + (orbit * 10) + beam_id
+        uval,uidx,uinv,ucnt = numpy.unique(track, return_index=True, return_inverse=True, return_counts=True)
+        self.track_id = uval
+        self.track_m = ucnt
+        return uinv
+
+    def get_beam_id(self, beam):
+        beam_id = {'gt1l': 1, 'gt1r': 2, 'gt2l': 3, 'gt2r': 4, 'gt3l': 5, 'gt3r': 6}
+        data = numpy.full(self.fid[beam+'/land_segments/delta_time'].shape, beam_id[beam], dtype=numpy.uint8)
+        return data
+
+    def unpack_20m_data(self, beam, name):
+        valid = ( (self.fid[beam+'/land_segments/latitude_20m'][()] < numpy.finfo('float32').max) &
+                  (self.fid[beam+'/land_segments/longitude_20m'][()] < numpy.finfo('float32').max) )
+        new_names = {'land_segments/latitude': 'land_segments/latitude_20m', 'land_segments/longitude': 'land_segments/longitude_20m', 
+                     'land_segments/canopy/h_canopy': 'land_segments/canopy/h_canopy_20m', 
+                     'land_segments/terrain/h_te_best_fit': 'land_segments/terrain/h_te_best_fit_20m'}
+        if name in new_names:
+            name = new_names[name]
+            dims = self.fid[beam+'/'+name].shape
+            dtype = self.fid[beam+'/'+name].dtype
+            n_segments_total = numpy.sum(valid)
+            data = numpy.zeros(n_segments_total, dtype=dtype)
+            counter = 0
+            for i in range(dims[1]):
+                tmp = self.fid[beam+'/'+name][:,i]
+                nvalid = numpy.sum(valid[:,i])
+                data[counter:counter+nvalid] = tmp[valid[:,i]]
+                counter += nvalid
+        else:
+            if name == 'beam':
+                tmp = self.get_beam_id(beam)
+            else:
+                tmp = self.fid[beam+'/'+name][()]
+            n_segments = numpy.sum(valid, axis=1)
+            data = numpy.repeat(tmp, n_segments)
+        return data
+
+    def get_data(self, name, use_20m_segments=False):
+        new_names = {'land_segments/latitude': 'land_segments/latitude_20m', 'land_segments/longitude': 'land_segments/longitude_20m',
+                     'land_segments/canopy/h_canopy': 'land_segments/canopy/h_canopy_20m', 
+                     'land_segments/terrain/h_te_best_fit': 'land_segments/terrain/h_te_best_fit_20m'}
+        if use_20m_segments:
+            segment_cnt = []
+            for beam in self.beams:
+                valid = ( (self.fid[beam+'/land_segments/latitude_20m'][()] < numpy.finfo('float32').max) &
+                          (self.fid[beam+'/land_segments/longitude_20m'][()] < numpy.finfo('float32').max) )
+                segment_cnt.append(numpy.sum(valid))
+            segment_total = sum(segment_cnt)
+        else:
+            segment_cnt = self.count
+            segment_total = sum(self.count)
+      
+        if name == 'beam':
+            dtype = 'int'
+            nvar = 1
+        else:
+            dtype = self.fid[self.beams[0]+'/'+name].dtype 
+            if self.fid[self.beams[0]+'/'+name].ndim > 1:
+                nvar = self.fid[self.beams[0]+'/'+name].shape[1]
+            else:
+                nvar = 1
+
+        data = numpy.empty((segment_total,nvar), dtype=dtype)
+        i = 0
+        for j,cnt in enumerate(segment_cnt):
+            if use_20m_segments:
+                tmp = self.unpack_20m_data(self.beams[j], name)
+            else:
+                if name == 'beam':
+                    tmp = self.get_beam_id(self.beams[j])
+                else:
+                    tmp = self.fid[self.beams[j]+'/'+name][()]
+            data[i:i+cnt,...] = tmp.reshape(tmp.shape[0],nvar)
+            i += cnt
+
+        return data
 
     def get_dataset(self, beam, name, index=None):
         if index:
