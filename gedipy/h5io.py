@@ -900,11 +900,11 @@ class ATL03H5File(LidarFile):
 
         return atl03_height
 
-    def get_photon_segment_id(self, beam):
-        segment_id = self.fid[beam+'/geolocation/segment_id'][()]
-        segment_ph_cnt = atl03_fid.fid[beam+'/geolocation/segment_ph_cnt'][()]
-        ph_segment_id = numpy.repeat(segment_id, segment_ph_cnt)
-        return ph_segment_id
+    def get_segment_data_by_photon(self, beam, name):
+        segment_data = self.fid[beam+'/'+name][()]
+        segment_ph_cnt = self.fid[beam+'/geolocation/segment_ph_cnt'][()]
+        ph_segment_data = numpy.repeat(segment_data, segment_ph_cnt)
+        return ph_segment_data
 
     def get_dataset(self, beam, name, index=None):
         if index:
