@@ -885,6 +885,27 @@ class ATL03H5File(LidarFile):
 
         return atl03_class
 
+    def get_photon_heights(self, beam, atl08_fid):
+        ph_index_beg = self.fid[beam+'/geolocation/ph_index_beg'][()]
+        segment_id = self.fid[beam+'/geolocation/segment_id'][()]
+        valid_idx = ph_index_beg > 0
+
+        idx = numpy.searchsorted(segment_id[valid_idx],
+            atl08_fid.get_photon_segment_id(beam), side='left')
+        atl08_ph_index_beg = ph_index_beg[valid_idx][idx] - 1
+
+        idx = atl08_ph_index_beg + atl08_fid.get_photon_index(beam)
+        atl03_height = numpy.full(self.get_nrecords(beam), numpy.nan, dtype=numpy.float32)
+        atl03_height[idx] = atl08_fid.get_photon_height(beam)
+
+        return atl03_height
+
+    def get_photon_segment_id(self, beam):
+        segment_id = self.fid[beam+'/geolocation/segment_id'][()]
+        segment_ph_cnt = atl03_fid.fid[beam+'/geolocation/segment_ph_cnt'][()]
+        ph_segment_id = numpy.repeat(segment_id, segment_ph_cnt)
+        return ph_segment_id
+
     def get_dataset(self, beam, name, index=None):
         if index:
             dataset = self.fid[beam][name][:,index]
@@ -1064,6 +1085,10 @@ class ATL08H5File(LidarFile):
     def get_photon_index(self, beam):
         photon_index = self.fid[beam+'/signal_photons/classed_pc_indx'][()] - 1
         return photon_index
+
+    def get_photon_height(self, beam):
+        photon_height = self.fid[beam+'/signal_photons/ph_h'][()]
+        return photon_height
 
     def get_photon_segment_id(self, beam):
         segment_id = self.fid[beam+'/signal_photons/ph_segment_id'][()]
